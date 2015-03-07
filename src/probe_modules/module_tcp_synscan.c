@@ -87,28 +87,85 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
 		__attribute__((unused))uint32_t *src_ip,
 		uint32_t *validation)
 {
-	if (ip_hdr->ip_p != IPPROTO_TCP) {
+    
+    if (ip_hdr->ip_p == IPPROTO_TCP) {
+		if ((4*ip_hdr->ip_hl + sizeof(struct tcphdr)) > len) {
+            // buffer not large enough to contain expected tcp header
+            return 0;
+        }
+        struct tcphdr *tcp = (struct tcphdr*)((char *) ip_hdr + 4*ip_hdr->ip_hl);
+        uint16_t sport = tcp->th_sport;
+        uint16_t dport = tcp->th_dport;
+        // validate source port
+        if (ntohs(sport) != zconf.target_port) {
+            return 0;
+        }
+        // validate tcp acknowledgement number
+        if (htonl(tcp->th_ack) != htonl(validation[0])+1) {
+            return 0;
+        }
+	}
+    else if (ip_hdr->ip_p == IPPROTO_ICMP) {
+        //Bano: Do we need some checks on length here?
+        struct icmp *icmp = (struct icmp*) ((char *) ip_hdr + 4*ip_hdr->ip_hl);
+        
+        if (icmp->icmp_type == ICMP_UNREACH) {
+            fprintf(stdout, "unreach\n");
+        }
+        if (icmp->icmp_type == ICMP_SOURCEQUENCH) {
+            fprintf(stdout, "srcquench\n");
+        }
+        if (icmp->icmp_type == ICMP_REDIRECT) {
+            fprintf(stdout, "redirect\n");
+        }
+        if (icmp->icmp_type == ICMP_TIMXCEED) {
+            fprintf(stdout, "timxceed\n");
+        }
+        if (icmp->icmp_type == ICMP_PARAMPROB) {
+            fprintf(stdout, "paramprob\n");
+        }
+        
+        // Note: Assuming here that ICMP header is 8 bytes long
+        // which is the case for error messages at least ones we
+        // are interested in
+        struct ip *ip_inner = (struct ip*) &icmp[1];
+        
+        uint32_t inner_src_ip = ip_inner->ip_src.s_addr;
+        uint32_t inner_dst_ip = ip_inner->ip_dst.s_addr;
+        
+        //Bano: Not sure what to do with this
+        // Now we know the actual inner ip length, we should recheck the buffer
+        //if (len < 4*ip_inner->ip_hl - sizeof(struct ip) + min_len) {
+        //    return 0;
+        
+        // This is the packet we sent
+        struct tcphdr *tcp = (struct tcphdr*)((char *) ip_inner + 4*ip_inner->ip_hl);
+        uint16_t sport = tcp->th_sport;
+        uint16_t dport = tcp->th_dport;
+        
+        // Validating the packet by matching inner packet src IP and ports with the
+        // corresponding global zmap scan parameters
+        // NOTE: This will not work if multiple source IP addresses or ports have been
+        // configured
+        if (inner_src_ip != zconf.source_ip_first || sport != zconf.source_port_first || dport != zconf.target_port) {
+			return 0;
+        }
+        // Bano: Testing
+        /*
+        fprintf(stdout, "src_ip: %s\n", inet_ntoa(ip_hdr->ip_src));
+        fprintf(stdout, "dst_ip: %s\n", inet_ntoa(ip_hdr->ip_dst));
+        fprintf(stdout, "inner_src_ip: %s \n", inet_ntoa(ip_inner->ip_src));
+        fprintf(stdout, "inner_dst_ip: %s \n\n", inet_ntoa(ip_inner->ip_dst));
+         */
+
+    }
+    else {
 		return 0;
 	}
-	if ((4*ip_hdr->ip_hl + sizeof(struct tcphdr)) > len) {
-		// buffer not large enough to contain expected tcp header
-		return 0;
-	}
-	struct tcphdr *tcp = (struct tcphdr*)((char *) ip_hdr + 4*ip_hdr->ip_hl);
-	uint16_t sport = tcp->th_sport;
-	uint16_t dport = tcp->th_dport;
-	// validate source port
-	if (ntohs(sport) != zconf.target_port) {
-		return 0;
-	}
-	// validate destination port
-	if (!check_dst_port(ntohs(dport), num_ports, validation)) {
-		return 0;
-	}
-	// validate tcp acknowledgement number
-	if (htonl(tcp->th_ack) != htonl(validation[0])+1) {
-		return 0;
-	}
+    // validate destination port
+    //if (!check_dst_port(sport, num_ports, validation)) {
+    //    return 0;
+    //}
 	return 1;
 }
 

@@ -147,7 +147,7 @@ static fielddef_t fields[] = {
 probe_module_t module_tcp_synscan = {
 	.name = "tcp_synscan",
 	.packet_length = 54,
-	.pcap_filter = "tcp && tcp[13] & 4 != 0 || tcp[13] == 18",
+	.pcap_filter = "icmp || (tcp && tcp[13] & 4 != 0 || tcp[13] == 18)",
 	.pcap_snaplen = 96,
 	.port_args = 1,
 	.global_initialize = &synscan_global_initialize,

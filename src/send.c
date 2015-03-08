@@ -279,7 +279,7 @@ int send_run(sock_t st, shard_t *s)
 					if (rc < 0) {
 						struct in_addr addr;
 						addr.s_addr = curr;
-						log_debug("send", "send_packet failed for %s. %s",
+						log_warn("monitor", "send_packet failed for %s. %s",
 								  inet_ntoa(addr), strerror(errno));
 						s->state.failures++;
 					} else {

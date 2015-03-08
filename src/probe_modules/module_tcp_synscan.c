@@ -109,29 +109,19 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
         //Bano: Do we need some checks on length here?
         struct icmp *icmp = (struct icmp*) ((char *) ip_hdr + 4*ip_hdr->ip_hl);
         
-        if (icmp->icmp_type == ICMP_UNREACH) {
-            fprintf(stdout, "unreach\n");
-        }
-        if (icmp->icmp_type == ICMP_SOURCEQUENCH) {
-            fprintf(stdout, "srcquench\n");
-        }
-        if (icmp->icmp_type == ICMP_REDIRECT) {
-            fprintf(stdout, "redirect\n");
-        }
-        if (icmp->icmp_type == ICMP_TIMXCEED) {
-            fprintf(stdout, "timxceed\n");
-        }
-        if (icmp->icmp_type == ICMP_PARAMPROB) {
-            fprintf(stdout, "paramprob\n");
+        // Bano: Handling only ICMP error messages which can be received in response
+        // to a TCP scan. We do not expect ICMP reply messages as these preclude an
+        // ICMP request which we are not sending
+        if ((icmp->icmp_type != ICMP_UNREACH) || (icmp->icmp_type != ICMP_SOURCEQUENCH) || (icmp->icmp_type != ICMP_REDIRECT) || (icmp->icmp_type != ICMP_TIMXCEED) || (icmp->icmp_type != ICMP_PARAMPROB)) {
+            return 0;
         }
         
         // Note: Assuming here that ICMP header is 8 bytes long
-        // which is the case for error messages at least ones we
-        // are interested in
+        // which is the case for ICMP error messages
         struct ip *ip_inner = (struct ip*) &icmp[1];
         
-        uint32_t inner_src_ip = ip_inner->ip_src.s_addr;
-        uint32_t inner_dst_ip = ip_inner->ip_dst.s_addr;
+        struct in_addr inner_src_ip = ip_inner->ip_src;
+        struct in_addr inner_dst_ip = ip_inner->ip_dst;
         
         //Bano: Not sure what to do with this
         // Now we know the actual inner ip length, we should recheck the buffer
@@ -143,20 +133,13 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
         uint16_t sport = tcp->th_sport;
         uint16_t dport = tcp->th_dport;
         
-        // Validating the packet by matching inner packet src IP and ports with the
+        // Bano: Validating the packet by matching inner packet src IP and ports with the
         // corresponding global zmap scan parameters
         // NOTE: This will not work if multiple source IP addresses or ports have been
         // configured
-        if (inner_src_ip != zconf.source_ip_first || sport != zconf.source_port_first || dport != zconf.target_port) {
+        if (strcmp(inet_ntoa(inner_src_ip),zconf.source_ip_first) != 0 || sport != zconf.source_port_first || dport != zconf.target_port) {
 			return 0;
         }
-        // Bano: Testing
-        /*
-        fprintf(stdout, "src_ip: %s\n", inet_ntoa(ip_hdr->ip_src));
-        fprintf(stdout, "dst_ip: %s\n", inet_ntoa(ip_hdr->ip_dst));
-        fprintf(stdout, "inner_src_ip: %s \n", inet_ntoa(ip_inner->ip_src));
-        fprintf(stdout, "inner_dst_ip: %s \n\n", inet_ntoa(ip_inner->ip_dst));
-         */
 
     }
     else {
@@ -173,32 +156,67 @@ void synscan_process_packet(const u_char *packet,
 		__attribute__((unused)) uint32_t len, fieldset_t *fs)
 {
 	struct ip *ip_hdr = (struct ip *)&packet[sizeof(struct ether_header)];
-	struct tcphdr *tcp = (struct tcphdr*)((char *)ip_hdr
-					+ 4*ip_hdr->ip_hl);
+    
+    if (ip_hdr->ip_p == IPPROTO_TCP) {
+        struct tcphdr *tcp = (struct tcphdr*)((char *)ip_hdr
+                        + 4*ip_hdr->ip_hl);
 
-	fs_add_uint64(fs, "sport", (uint64_t) ntohs(tcp->th_sport));
-	fs_add_uint64(fs, "dport", (uint64_t) ntohs(tcp->th_dport));
-	fs_add_uint64(fs, "seqnum", (uint64_t) ntohl(tcp->th_seq));
-	fs_add_uint64(fs, "acknum", (uint64_t) ntohl(tcp->th_ack));
-	fs_add_uint64(fs, "window", (uint64_t) ntohs(tcp->th_win));
+        fs_add_uint64(fs, "sport", (uint64_t) ntohs(tcp->th_sport));
+        fs_add_uint64(fs, "dport", (uint64_t) ntohs(tcp->th_dport));
+        fs_add_uint64(fs, "seqnum", (uint64_t) ntohl(tcp->th_seq));
+        fs_add_uint64(fs, "acknum", (uint64_t) ntohl(tcp->th_ack));
+        fs_add_uint64(fs, "window", (uint64_t) ntohs(tcp->th_win));
 
-	if (tcp->th_flags & TH_RST) { // RST packet
-		fs_add_string(fs, "classification", (char*) "rst", 0);
+        if (tcp->th_flags & TH_RST) { // RST packet
+            fs_add_string(fs, "classification", (char*) "TCP-rst", 0);
+            fs_add_uint64(fs, "success", 0);
+        } else { // SYNACK packet
+            fs_add_string(fs, "classification", (char*) "TCP-synack", 0);
+            fs_add_uint64(fs, "success", 1);
+        }
+    }
+    else if (ip_hdr->ip_p == IPPROTO_ICMP) {
+
+		struct icmp *icmp = (struct icmp *) ((char *) ip_hdr + ip_hdr->ip_hl * 4);
+		struct ip *ip_inner = (struct ip *) &icmp[1];
+
+		fs_add_string(fs, "classification", (char*) "icmp", 0);
 		fs_add_uint64(fs, "success", 0);
-	} else { // SYNACK packet
-		fs_add_string(fs, "classification", (char*) "synack", 0);
-		fs_add_uint64(fs, "success", 1);
+        // Get inner dest ip
+        struct in_addr inner_dst_ip = ip_inner->ip_dst;
+        fs_add_string(fs, "inner_daddr", inet_ntoa(inner_dst_ip), 0);
+		fs_add_null(fs, "sport");
+		fs_add_null(fs, "dport");
+		fs_add_uint64(fs, "icmp_type", icmp->icmp_type);
+		fs_add_uint64(fs, "icmp_code", icmp->icmp_code);
+        //These are TCP specific fields and adding null for icmp
+        fs_add_null(fs, "seqnum");
+        fs_add_null(fs, "acknum");
+        fs_add_null(fs, "window");
 	}
 }
 
 static fielddef_t fields[] = {
-	{.name = "sport",  .type = "int", .desc = "TCP source port"},
-	{.name = "dport",  .type = "int", .desc = "TCP destination port"},
+    {.name = "classification", .type="string", .desc = "packet classification"},
+	{.name = "success", .type="int", .desc = "is response considered success"},
+	{.name = "sport",  .type = "int", .desc = "TCP/ICMP source port"},
+	{.name = "dport",  .type = "int", .desc = "TCP/ICMP destination port"},
+    // Bano: Not logging source IP and src/dst ports as these being ZMap's are already known.
+    // Also, ZMap replaces original saddr of icmp packet with the inner daddr and then have
+    // an additional field icmp_responder for real daddr of the icmp packet. I let saddr and
+    // daddr as they are in the packet, and add the field inner_daddr for the inner daddr
+    {.name = "inner_daddr", .type = "string", .desc = "Dest IP of TCP packet within ICMP message"},
+    //{.name = "icmp_responder", .type = "string", .desc = "Source IP of ICMP_UNREACH message"},
+	{.name = "icmp_type", .type = "int", .desc = "icmp message type"},
+	{.name = "icmp_code", .type = "int", .desc = "icmp message sub type code"},
+	//{.name = "icmp_unreach_str", .type = "string", .desc = "for icmp_unreach responses, the string version of icmp_code (e.g. network-unreach)"},
+	//{.name = "udp_pkt_size", .type="int", .desc = "UDP packet length"},
+	//{.name = "data", .type="binary", .desc = "UDP payload"},
+    // The following will have null values for ICMP
 	{.name = "seqnum", .type = "int", .desc = "TCP sequence number"},
 	{.name = "acknum", .type = "int", .desc = "TCP acknowledgement number"},
-	{.name = "window", .type = "int", .desc = "TCP window"},
-	{.name = "classification", .type="string", .desc = "packet classification"},
-	{.name = "success", .type="int", .desc = "is response considered success"}
+	{.name = "window", .type = "int", .desc = "TCP window"}
+	
 };
 
 probe_module_t module_tcp_synscan = {
@@ -215,10 +233,11 @@ probe_module_t module_tcp_synscan = {
 	.validate_packet = &synscan_validate_packet,
 	.close = NULL,
 	.helptext = "Probe module that sends a TCP SYN packet to a specific "
-		"port. Possible classifications are: synack and rst. A "
-		"SYN-ACK packet is considered a success and a reset packet "
+		"port. Possible classifications are: synack, rst and icmp. A "
+		"SYN-ACK packet is considered a success and a tcp reset or icmp packet "
 		"is considered a failed response.",
 
 	.fields = fields,
-	.numfields = 7};
+	.numfields = sizeof(fields)/sizeof(fields[0])
+};
 

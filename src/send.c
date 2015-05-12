@@ -24,6 +24,8 @@
 #include "../lib/blacklist.h"
 #include "../lib/lockfd.h"
 
+#define IP_RETRANSMIT_SIZE 5
+
 #include "aesrand.h"
 #include "get_gateway.h"
 #include "iterator.h"
@@ -222,9 +224,18 @@ int send_run(sock_t st, shard_t *s)
 		interval = (zconf.rate / zconf.senders) / 20;
 		last_time = now();
 	}
+
+	uint32_t ips_to_retransmit[IP_RETRANSMIT_SIZE];
+        int count_retransmit=0;
+        int idx_retransmit=0;
+        int retransmit_remaining=0;
+
 	uint32_t curr = shard_get_cur_ip(s);
+	ips_to_retransmit[count_retransmit++]=curr;
+
 	int attempts = zconf.num_retries + 1;
 	uint32_t idx = 0;
+	
 	while (1) {
 		// adaptive timing delay
 		if (delay > 0) {
@@ -245,7 +256,7 @@ int send_run(sock_t st, shard_t *s)
 			s->cb(s->id, s->arg);
 			break;
 		}
-		if (s->state.sent >= max_targets) {
+		if (s->state.sent >= max_targets && retransmit_remaining==2) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished (max targets of %u reached)", s->id, max_targets);
 			break;
@@ -254,18 +265,31 @@ int send_run(sock_t st, shard_t *s)
 			s->cb(s->id, s->arg);
 			break;
 		}
-		if (curr == 0) {
+		//Bano:  Used to be if(curr==0)
+		if (retransmit_remaining==2) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished, shard depleted", s->id);
 			break;
 		}
-		s->state.sent++;
+		//s->state.sent++;
 		for (int i=0; i < zconf.packet_streams; i++) {
 			uint32_t src_ip = get_src_ip(curr, i);
 
 		  	uint32_t validation[VALIDATE_BYTES/sizeof(uint32_t)];
 			validate_gen(src_ip, curr, (uint8_t *)validation);
 			zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
+
+			/*
+			// Bano: If it is repeat of a probe,
+                        // inject delay of 10 sec
+                        if(i!=0)
+                        	{
+				clock_t endwait;
+        			// wait for 10 second
+        			endwait=clock()+10*CLOCKS_PER_SEC;
+        			while (clock()<endwait);
+				}
+			*/
 
 			if (zconf.dryrun) {
 				lock_file(stdout);
@@ -275,6 +299,7 @@ int send_run(sock_t st, shard_t *s)
 				int length = zconf.probe_module->packet_length;
 				void *contents = buf + zconf.send_ip_pkts*sizeof(struct ether_header);
 				for (int i = 0; i < attempts; ++i) {
+					
 					int rc = send_packet(st, contents, length, idx);
 					if (rc < 0) {
 						struct in_addr addr;
@@ -291,7 +316,36 @@ int send_run(sock_t st, shard_t *s)
 			}
 		}
 
-		curr = shard_get_next_ip(s);
+		// Packet retransmission code begins
+		if(count_retransmit==IP_RETRANSMIT_SIZE || retransmit_remaining==1)
+			{
+			printf("*********RETRANSMITING************\n");	
+			curr=ips_to_retransmit[idx_retransmit++];
+			if(idx_retransmit==count_retransmit)
+				{ 
+				idx_retransmit=0;
+				count_retransmit=0;
+				if(retransmit_remaining==1)
+					retransmit_remaining=2;
+				}
+			}
+		else
+			{
+			s->state.sent++;
+			curr = shard_get_next_ip(s);
+			ips_to_retransmit[count_retransmit++]=curr;
+			if(curr==0 || s->state.sent >= max_targets)
+				{
+				if(max_targets>IP_RETRANSMIT_SIZE && max_targets%IP_RETRANSMIT_SIZE!=0)
+					{
+					printf("*********RETRANSMITING************\n");
+					curr=ips_to_retransmit[idx_retransmit++];
+					retransmit_remaining=1;
+					}
+				else
+					retransmit_remaining=2;
+				}
+			}
 	}
 	if (zconf.dryrun) {
 		lock_file(stdout);

@@ -24,7 +24,7 @@
 #include "../lib/blacklist.h"
 #include "../lib/lockfd.h"
 
-#define IP_RETRANSMIT_SIZE 5
+#define IP_RETRANSMIT_SIZE 1000000
 
 #include "aesrand.h"
 #include "get_gateway.h"
@@ -229,12 +229,14 @@ int send_run(sock_t st, shard_t *s)
         int count_retransmit=0;
         int idx_retransmit=0;
         int retransmit_remaining=0;
-
+	int mode_retransmit=0;
+	
 	uint32_t curr = shard_get_cur_ip(s);
 	ips_to_retransmit[count_retransmit++]=curr;
 
 	int attempts = zconf.num_retries + 1;
 	uint32_t idx = 0;
+	
 	
 	while (1) {
 		// adaptive timing delay
@@ -290,11 +292,18 @@ int send_run(sock_t st, shard_t *s)
         			while (clock()<endwait);
 				}
 			*/
+			lock_file(stdout);
+			if(mode_retransmit==0)
+				fprintf(stdout,"^\t%f\t%s\n",now(),make_ip_str(curr));
+			else
+				fprintf(stdout,"^R\t%f\t%s\n",now(),make_ip_str(curr));
+			unlock_file(stdout);
 
-			if (zconf.dryrun) {
-				lock_file(stdout);
-				zconf.probe_module->print_packet(stdout, buf);
-				unlock_file(stdout);
+			if (zconf.dryrun) 	{
+				int a;
+				//lock_file(stdout);
+				//zconf.probe_module->print_packet(stdout, buf);
+				//unlock_file(stdout);
 			} else {
 				int length = zconf.probe_module->packet_length;
 				void *contents = buf + zconf.send_ip_pkts*sizeof(struct ether_header);
@@ -319,8 +328,9 @@ int send_run(sock_t st, shard_t *s)
 		// Packet retransmission code begins
 		if(count_retransmit==IP_RETRANSMIT_SIZE || retransmit_remaining==1)
 			{
-			printf("*********RETRANSMITING************\n");	
+			//printf("*********RETRANSMITING************\n");	
 			curr=ips_to_retransmit[idx_retransmit++];
+			mode_retransmit=1;
 			if(idx_retransmit==count_retransmit)
 				{ 
 				idx_retransmit=0;
@@ -333,12 +343,13 @@ int send_run(sock_t st, shard_t *s)
 			{
 			s->state.sent++;
 			curr = shard_get_next_ip(s);
+			mode_retransmit=0;
 			ips_to_retransmit[count_retransmit++]=curr;
 			if(curr==0 || s->state.sent >= max_targets)
 				{
 				if(max_targets>IP_RETRANSMIT_SIZE && max_targets%IP_RETRANSMIT_SIZE!=0)
 					{
-					printf("*********RETRANSMITING************\n");
+					//printf("*********RETRANSMITING************\n");
 					curr=ips_to_retransmit[idx_retransmit++];
 					retransmit_remaining=1;
 					}

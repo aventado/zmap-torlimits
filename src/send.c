@@ -295,6 +295,7 @@ int send_run(sock_t st, shard_t *s)
 			lock_file(stdout);
 			if(mode_retransmit==0)
 				fprintf(stdout,"^\t%f\t%s\n",now(),make_ip_str(curr));
+			//fprintf(stdout,"^\t%f\t%lu\n",now(),curr);
 			else
 				fprintf(stdout,"^R\t%f\t%s\n",now(),make_ip_str(curr));
 			unlock_file(stdout);
@@ -329,14 +330,49 @@ int send_run(sock_t st, shard_t *s)
 		if(count_retransmit==IP_RETRANSMIT_SIZE || retransmit_remaining==1)
 			{
 			//printf("*********RETRANSMITING************\n");	
+			if(retransmit_remaining==1 && idx_retransmit==0)
+				{
+				int max_idx=IP_RETRANSMIT_SIZE-(max_targets%IP_RETRANSMIT_SIZE);
+				for(int x=0; x<max_idx; x++)
+                                                {
+                                                // adaptive timing delay
+                                                                // adaptive timing delay
+                                                if (delay > 0) {
+                                                        count++;
+                                                        for (vi = delay; vi--; )
+                                                                ;
+                                                        if (!interval || (count % interval == 0)) {
+                                                                double t = now();
+                                                                delay *= (double)(count - last_count)
+                                                                        / (t - last_time) / (zconf.rate / zconf.senders);
+                                                                if (delay < 1)
+                                                                        delay = 1;
+                                                                last_count = count;
+                                                                last_time = t;
+                                                        }
+                                                }
+                                                int i=0;
+                                                // integer representation of local loopback 127.0.0.1 
+                                                curr=16777343;
+                                                uint32_t src_ip = get_src_ip(curr, i);
+                                                uint32_t validation[VALIDATE_BYTES/sizeof(uint32_t)];
+                                                validate_gen(src_ip, curr, (uint8_t *)validation);
+                                                zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
+
+                                                fprintf(stdout,"^\t%f\t%s\n",now(),make_ip_str(curr));
+                                                } 
+				}
+
 			curr=ips_to_retransmit[idx_retransmit++];
-			mode_retransmit=1;
+                        mode_retransmit=1;
+
 			if(idx_retransmit==count_retransmit)
 				{ 
+				if(retransmit_remaining==1)
+                                        retransmit_remaining=2;
+                                        
 				idx_retransmit=0;
 				count_retransmit=0;
-				if(retransmit_remaining==1)
-					retransmit_remaining=2;
 				}
 			}
 		else
@@ -350,7 +386,9 @@ int send_run(sock_t st, shard_t *s)
 				if(max_targets>IP_RETRANSMIT_SIZE && max_targets%IP_RETRANSMIT_SIZE!=0)
 					{
 					//printf("*********RETRANSMITING************\n");
-					curr=ips_to_retransmit[idx_retransmit++];
+					//curr=ips_to_retransmit[idx_retransmit++];
+					// local loopback 
+					curr=16777343;
 					retransmit_remaining=1;
 					}
 				else

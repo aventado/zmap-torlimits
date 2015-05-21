@@ -13,6 +13,8 @@
 // global configuration and defaults
 struct state_conf zconf = {
 	.log_level = LOG_INFO,
+	.mode_retransmit = 0,
+	.source_port_retransmit = 41591,
 	.source_port_first = 32768, // (these are the default
 	.source_port_last = 61000,	//	 ephemeral range on Linux)
 	.output_filename = NULL,
@@ -89,5 +91,8 @@ struct state_recv zrecv = {
 	.pcap_recv = 0,
 	.pcap_drop = 0,
 	.pcap_ifdrop = 0,
+    //Bano: added these
+    .icmp_badlen = 0,
+    .tcp_badlen = 0,
 };
 

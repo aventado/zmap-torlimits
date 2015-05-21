@@ -41,6 +41,10 @@ struct fieldset_conf {
 struct state_conf {
 	int log_level;
 	port_h_t target_port;
+	// Bano: for retransmits
+	int mode_retransmit;
+	port_h_t source_port_retransmit;
+
 	port_h_t source_port_first;
 	port_h_t source_port_last;
 	// maximum number of packets that the scanner will send before terminating
@@ -175,7 +179,16 @@ struct state_recv {
 	uint32_t pcap_drop;
 	// number of packets dropped by the network interface or its driver.
 	uint32_t pcap_ifdrop;
-
+    
+    //Bano: added these
+    // num. of packets where ip header suggests it is icmp but
+    // the packet is so small that can't read the icmp header
+    // off it
+    uint32_t icmp_badlen;
+    // num. of packets where ip header suggests it is tcp but
+    // the packet is so small that can't read the tcp header
+    // off it
+    uint32_t tcp_badlen;
 };
 extern struct state_recv zrecv;
 

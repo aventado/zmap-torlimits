@@ -15,6 +15,8 @@
 #include <string.h>
 #include <assert.h>
 
+#include "../lib/logger.h"
+
 #include "../../lib/includes.h"
 #include "../fieldset.h"
 #include "probe_modules.h"
@@ -30,8 +32,8 @@ int synscan_global_initialize(struct state_conf *state)
 }
 
 int synscan_init_perthread(void* buf, macaddr_t *src,
-		macaddr_t *gw, port_h_t dst_port,
-		__attribute__((unused)) void **arg_ptr)
+                           macaddr_t *gw, port_h_t dst_port,
+                           __attribute__((unused)) void **arg_ptr)
 {
 	memset(buf, 0, MAX_PACKET_SIZE);
 	struct ether_header *eth_header = (struct ether_header *) buf;
@@ -45,26 +47,30 @@ int synscan_init_perthread(void* buf, macaddr_t *src,
 }
 
 int synscan_make_packet(void *buf, ipaddr_n_t src_ip, ipaddr_n_t dst_ip,
-		uint32_t *validation, int probe_num, __attribute__((unused)) void *arg)
+                        uint32_t *validation, int probe_num, __attribute__((unused)) void *arg)
 {
 	struct ether_header *eth_header = (struct ether_header *)buf;
 	struct ip *ip_header = (struct ip*)(&eth_header[1]);
 	struct tcphdr *tcp_header = (struct tcphdr*)(&ip_header[1]);
 	uint32_t tcp_seq = validation[0];
-
+    
 	ip_header->ip_src.s_addr = src_ip;
 	ip_header->ip_dst.s_addr = dst_ip;
-
-	tcp_header->th_sport = htons(get_src_port(num_ports,
-				probe_num, validation));
+   
+	uint16_t the_source_port=htons(zconf.source_port_retransmit);
+	if(zconf.mode_retransmit==0)
+		the_source_port=htons(get_src_port(num_ports,
+                                              probe_num, validation));
+ 
+	tcp_header->th_sport = the_source_port;
 	tcp_header->th_seq = tcp_seq;
 	tcp_header->th_sum = 0;
 	tcp_header->th_sum = tcp_checksum(sizeof(struct tcphdr),
-			ip_header->ip_src.s_addr, ip_header->ip_dst.s_addr, tcp_header);
-
+                                      ip_header->ip_src.s_addr, ip_header->ip_dst.s_addr, tcp_header);
+    
 	ip_header->ip_sum = 0;
 	ip_header->ip_sum = zmap_ip_checksum((unsigned short *) ip_header);
-
+    
 	return EXIT_SUCCESS;
 }
 
@@ -84,68 +90,115 @@ void synscan_print_packet(FILE *fp, void* packet)
 }
 
 int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
-		__attribute__((unused))uint32_t *src_ip,
-		uint32_t *validation)
+                            __attribute__((unused))uint32_t *src_ip,
+                            uint32_t *validation)
 {
-    // Bano: We can receive packets from an intermediate machine
-    // with a different source IP address and source port than the
-    // one we probed. So I am changing validation to only care about
-    // dest port (not checking dest IP because we would not be
-    // receiving the packet had dst_ip not been the one from which
-    // we are carrying out the scan)
+    uint32_t src_ip_t = ip_hdr->ip_src.s_addr;
+    uint32_t dst_ip_t = ip_hdr->ip_dst.s_addr;
+    
+    // Bano: Validating the packet by matching packet dst IP with the
+    // corresponding global zmap scan source IP
+    // NOTE: This will not work if multiple source IPs have been configured
+    if (strcmp(make_ip_str(dst_ip_t),zconf.source_ip_first)!=0) {
+        //debug
+        //log_warn("monitor","VALIDATE_SRCIP_FAIL. %s-->%s",make_ip_str(src_ip_t),make_ip_str(dst_ip_t));
+        return 0;
+    }
     
     if (ip_hdr->ip_p == IPPROTO_TCP) {
-		if ((4*ip_hdr->ip_hl + sizeof(struct tcphdr)) > len) {
-            // buffer not large enough to contain expected tcp header
+	    //debug
+	    //log_warn("monitor","VALIDATE_TCP_PKT");
+        // buffer not large enough to contain expected tcp header
+	    if ((4*ip_hdr->ip_hl + sizeof(struct tcphdr)) > len) {
+            zrecv.tcp_badlen++;
             return 0;
-        }
+		}
         
         struct tcphdr *tcp = (struct tcphdr*)((char *) ip_hdr + 4*ip_hdr->ip_hl);
-        //uint16_t sport = tcp->th_sport;
+        uint16_t sport = tcp->th_sport;
         uint16_t dport = tcp->th_dport;
+        
+        // Bano: We don't want this check because the packet could have been
+        // injected by an intermediate device, not necessarily using the same
+        // source port that we scanned
+        
+        // validate source port
+        /*
+         if (ntohs(sport) != zconf.target_port) {
+            return 0;
+        }
+         */
         
         // Bano: Validating the packet by matching packet dst port with the
         // corresponding global zmap scan src port
         // NOTE: This will not work if multiple source ports have been configured
-        if (dport != zconf.source_port_first) {
+        if (ntohs(dport) != zconf.source_port_first && ntohs(dport) != zconf.source_port_retransmit) {
+			//debug
+			//log_warn("monitor","VALIDATE_TCP_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
 			return 0;
         }
         
-	}
-    else if (ip_hdr->ip_p == IPPROTO_ICMP) {
-        //Bano: Do we need some checks on length here?
-        struct icmp *icmp = (struct icmp*) ((char *) ip_hdr + 4*ip_hdr->ip_hl);
-        
-        // Bano: Handling only ICMP error messages which can be received in response
-        // to a TCP scan. We do not expect ICMP reply messages as these preclude an
-        // ICMP request which we are not sending any way
-        if ((icmp->icmp_type != ICMP_UNREACH) || (icmp->icmp_type != ICMP_SOURCEQUENCH) || (icmp->icmp_type != ICMP_REDIRECT) || (icmp->icmp_type != ICMP_TIMXCEED) || (icmp->icmp_type != ICMP_PARAMPROB)) {
+        // validate tcp acknowledgement number
+        if (htonl(tcp->th_ack) != htonl(validation[0])+1) {
+            //log_warn("monitor","VALIDATE_TCP_ACK_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
             return 0;
         }
         
-        struct ip *ip_inner = (struct ip*) &icmp[1];
+        //debug
+        //log_warn("monitor","VALIDATE_TCP_PASS. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
         
-        struct in_addr inner_src_ip = ip_inner->ip_src;
-        //struct in_addr inner_dst_ip = ip_inner->ip_dst;
+    }
+    else if (ip_hdr->ip_p == IPPROTO_ICMP) {
+        //debug
+        //log_warn("monitor","VALIDATE_ICMP_PKT");
         
-        //Bano: Not sure what to do with this
-        // Now we know the actual inner ip length, we should recheck the buffer
-        //if (len < 4*ip_inner->ip_hl - sizeof(struct ip) + min_len) {
-        //    return 0;
+        //Bano: basic checks performed in recv.c in handle_packet() so no
+        // need to repeat these here
+        
+        struct icmp *icmp = (struct icmp*) ((char *) ip_hdr + 4*ip_hdr->ip_hl);
+        
+        struct ip *ip_inner = (struct ip*) ((char *) icmp+8);
+
+        uint32_t inner_src_ip = ip_inner->ip_src.s_addr;
+        uint32_t inner_dst_ip = ip_inner->ip_dst.s_addr;
+
         
         // This is the packet we sent
-        struct tcphdr *tcp = (struct tcphdr*)((char *) ip_inner + 4*ip_inner->ip_hl);
-        uint16_t sport = tcp->th_sport;
-        //uint16_t dport = tcp->th_dport;
+        struct tcphdr *inner_tcp = (struct tcphdr*)((char *) ip_inner + 4*ip_inner->ip_hl);
+        uint16_t inner_sport = inner_tcp->th_sport;
+        uint16_t inner_dport = inner_tcp->th_dport;
+
         
-        // Bano: Validating the packet by matching inner packet src IP and src port with the
-        // corresponding global zmap scan parameters
-        // NOTE: This will not work if multiple source IP addresses or ports have been
-        // configured
-        if (strcmp(inet_ntoa(inner_src_ip),zconf.source_ip_first) != 0 || sport != zconf.source_port_first) {
+        // Bano: We don't want this check because the packet could have been
+        // injected by an intermediate device, not necessarily using the same
+        // source port that we scanned
+        
+        // validate source port
+        /*
+         if (ntohs(inner_dport) != zconf.target_port) {
+         return 0;
+         }
+         */
+        
+        // Bano: Validating the packet by matching packet dst port with the
+        // corresponding global zmap scan src port
+        // NOTE: This will not work if multiple source ports have been configured
+        if (ntohs(inner_sport) != zconf.source_port_first && ntohs(inner_sport) != zconf.source_port_retransmit) {
+			//debug
+			//log_warn("monitor","VALIDATE_ICMP_TCP_SPORT_FAIL. %s:%u-->%s:%u",make_ip_str(inner_src_ip),ntohs(inner_sport),make_ip_str(inner_dst_ip),ntohs(inner_dport));
 			return 0;
         }
+        
+        // validate tcp acknowledgement number
+        if ( htonl(inner_tcp->th_seq) != htonl(validation[0]) ) {
+            //debug
+            //log_warn("monitor","VALIDATE_ICMP_TCP_ACK_FAIL. %s:%u:%u-->%s:%u:%u",make_ip_str(inner_src_ip),ntohs(inner_sport),htonl(inner_tcp->th_ack),make_ip_str(inner_dst_ip),ntohs(inner_dport),htonl(validation[0]));
+            return 0;
+        }
 
+        //debug
+        //log_warn("monitor","VALIDATE_ICMP_PASS: in_src-%s/in_dst%s:in_src_port%u-->src-%s",make_ip_str(inner_src_ip.s_addr),make_ip_str(inner_dst_ip.s_addr),ntohs(inner_sport), make_ip_str(src_ip_t));
+        
     }
     else {
 		return 0;
@@ -154,52 +207,67 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
 }
 
 void synscan_process_packet(const u_char *packet,
-		__attribute__((unused)) uint32_t len, fieldset_t *fs)
+                            __attribute__((unused)) uint32_t len, fieldset_t *fs)
 {
-	struct ip *ip_hdr = (struct ip *)&packet[sizeof(struct ether_header)];
+    struct ip *ip_hdr = (struct ip *)&packet[sizeof(struct ether_header)];
+
     
     if (ip_hdr->ip_p == IPPROTO_TCP) {
         struct tcphdr *tcp = (struct tcphdr*)((char *)ip_hdr
-                        + 4*ip_hdr->ip_hl);
-
+                                              + 4*ip_hdr->ip_hl);
+        
+        if (tcp->th_flags & TH_RST) { // RST packet
+            fs_add_string(fs, "classification", (char*) "0", 0);
+            fs_add_uint64(fs, "success", 1);
+        } else { // SYNACK packet
+            fs_add_string(fs, "classification", (char*) "1", 0);
+            fs_add_uint64(fs, "success", 1);
+        }	
         fs_add_uint64(fs, "sport", (uint64_t) ntohs(tcp->th_sport));
         fs_add_uint64(fs, "dport", (uint64_t) ntohs(tcp->th_dport));
+       	
+        //ICMP specific fields, adding null for TCP
+        fs_add_null(fs, "inner_daddr");
+        fs_add_null(fs, "icmp_type");
+        fs_add_null(fs, "icmp_code");
         fs_add_uint64(fs, "seqnum", (uint64_t) ntohl(tcp->th_seq));
         fs_add_uint64(fs, "acknum", (uint64_t) ntohl(tcp->th_ack));
         fs_add_uint64(fs, "window", (uint64_t) ntohs(tcp->th_win));
-
-        if (tcp->th_flags & TH_RST) { // RST packet
-            fs_add_string(fs, "classification", (char*) "TCP-rst", 0);
-            fs_add_uint64(fs, "success", 0);
-        } else { // SYNACK packet
-            fs_add_string(fs, "classification", (char*) "TCP-synack", 0);
-            fs_add_uint64(fs, "success", 1);
-        }
+	if (ntohs(tcp->th_dport) == zconf.source_port_retransmit)
+                fs_add_string(fs, "is_retransmit", "R", 0);
+        else
+                fs_add_string(fs, "is_retransmit", "S", 0);
         
-        //ICMP specific fields, adding null for TCP
-        fs_add_null(fs, "inner_daddr");
-		fs_add_null(fs, "icmp_type");
-		fs_add_null(fs, "icmp_code");
-
     }
     else if (ip_hdr->ip_p == IPPROTO_ICMP) {
+        
+        struct icmp *icmp = (struct icmp*) ((char *) ip_hdr + 4*ip_hdr->ip_hl);
+        
+        struct ip *ip_inner = (struct ip*) ((char *) icmp+8);
 
-		struct icmp *icmp = (struct icmp *) ((char *) ip_hdr + ip_hdr->ip_hl * 4);
-		struct ip *ip_inner = (struct ip *) &icmp[1];
-
-		fs_add_string(fs, "classification", (char*) "icmp", 0);
-		fs_add_uint64(fs, "success", 0);
+	struct tcphdr *inner_tcp = (struct tcphdr*)((char *) ip_inner + 4*ip_inner->ip_hl);
+       
+        fs_add_string(fs, "classification", (char*) "2", 0);
+        fs_add_uint64(fs, "success", 1);
+        fs_add_null(fs, "sport");
+        fs_add_null(fs, "dport");
         // Get inner dest ip
-        struct in_addr inner_dst_ip = ip_inner->ip_dst;
-        fs_add_string(fs, "inner_daddr", inet_ntoa(inner_dst_ip), 0);
-		fs_add_null(fs, "sport");
-		fs_add_null(fs, "dport");
-		fs_add_uint64(fs, "icmp_type", icmp->icmp_type);
-		fs_add_uint64(fs, "icmp_code", icmp->icmp_code);
+        //struct in_addr inner_dst_ip = ip_inner->ip_dst;
+        fs_add_string(fs, "inner_daddr", make_ip_str(ip_inner->ip_dst.s_addr), 0);
+        fs_add_uint64(fs, "icmp_type", icmp->icmp_type);
+        fs_add_uint64(fs, "icmp_code", icmp->icmp_code);
         //These are TCP specific fields and adding null for icmp
         fs_add_null(fs, "seqnum");
         fs_add_null(fs, "acknum");
         fs_add_null(fs, "window");
+
+	 if (ntohs(inner_tcp->th_sport) == zconf.source_port_retransmit)
+                fs_add_string(fs, "is_retransmit", "R", 0);
+        else
+                fs_add_string(fs, "is_retransmit", "S", 0);
+
+        //debug
+        //log_warn("monitor","VALIDATE_ICMP_PROCESSED: %s",make_ip_str(ip_inner->ip_src.s_addr));
 	}
 }
 
@@ -222,14 +290,15 @@ static fielddef_t fields[] = {
     // The following will have null values for ICMP
 	{.name = "seqnum", .type = "int", .desc = "TCP sequence number"},
 	{.name = "acknum", .type = "int", .desc = "TCP acknowledgement number"},
-	{.name = "window", .type = "int", .desc = "TCP window"}
-	
+	{.name = "window", .type = "int", .desc = "TCP window"},
+	{.name = "is_retransmit", .type = "string", .desc = "is is_retransmit packet"},
+	{.name = "validation", .type = "int", .desc ="validation mark"}
 };
 
 probe_module_t module_tcp_synscan = {
 	.name = "tcp_synscan",
 	.packet_length = 54,
-	.pcap_filter = "icmp || (tcp && tcp[13] & 4 != 0 || tcp[13] == 18)",
+    .pcap_filter = "icmp || (tcp[13] & 4 != 0 || tcp[13] == 18)",
 	.pcap_snaplen = 96,
 	.port_args = 1,
 	.global_initialize = &synscan_global_initialize,
@@ -240,10 +309,10 @@ probe_module_t module_tcp_synscan = {
 	.validate_packet = &synscan_validate_packet,
 	.close = NULL,
 	.helptext = "Probe module that sends a TCP SYN packet to a specific "
-		"port. Possible classifications are: synack, rst and icmp. A "
-		"SYN-ACK packet is considered a success and a tcp reset or icmp packet "
-		"is considered a failed response.",
-
+    "port. Possible classifications are: synack, rst and icmp. A "
+    "SYN-ACK packet is considered a success and a tcp reset or icmp packet "
+    "is considered a failed response.",
+    
 	.fields = fields,
 	.numfields = sizeof(fields)/sizeof(fields[0])
 };

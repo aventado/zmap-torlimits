@@ -42,7 +42,12 @@ struct state_conf {
 	int log_level;
 	port_h_t target_port;
 	// Bano: for retransmits
+	// the program should do retransmits or not
+	int should_retransmit;
+        // 0 means program is in 'send' mode, 1 means program
+	// is in retransmit mode.
 	int mode_retransmit;
+	// the port from which to retransmit probes
 	port_h_t source_port_retransmit;
 
 	port_h_t source_port_first;
@@ -140,6 +145,7 @@ struct state_send {
 	double start;
 	double finish;
 	uint32_t sent;
+	uint32_t retransmitted;
 	uint32_t blacklisted;
 	uint32_t whitelisted;
 	int complete;

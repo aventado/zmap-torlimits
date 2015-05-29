@@ -225,9 +225,22 @@ int send_run(sock_t st, shard_t *s)
 		last_time = now();
 	}
 
+	//Bano: packet retransmission stuff
+	// A queue of size K(=IP_RETRANSMIT_SIZE). If zconf.should_retransmit
+	// is 1, then the send function operates in two modes, send and
+	// retransmit. After sending scan packets to K IP addresses, the 
+	// program switches to retransmit mode and resends scan packets to
+	// the same K IP addresses and so forth.
 	uint32_t ips_to_retransmit[IP_RETRANSMIT_SIZE];
+	// keeps track of how many packets have been sent in the Send mode
         int count_retransmit=0;
+	// iterates through the queue ips_to_retransmit
         int idx_retransmit=0;
+	// this operates in three modes: 0 means regular mode, that is 
+	// K Send packets then K retransmits and so forth. 1 means that
+	// the last n%K packets have been sent and 2 means that the last
+	// n%K packets have been retransmitted and it's time to stop sending
+	// out any more packets
         int retransmit_remaining=0;
 	
 	uint32_t curr = shard_get_cur_ip(s);
@@ -256,21 +269,37 @@ int send_run(sock_t st, shard_t *s)
 			s->cb(s->id, s->arg);
 			break;
 		}
-		if (s->state.sent >= max_targets && retransmit_remaining==2) {
+
+		//if retransmits are enabled
+		if(zconf.should_retransmit && (s->state.sent >= max_targets && retransmit_remaining==2)) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished (max targets of %u reached)", s->id, max_targets);
 			break;
 		}
+		
+		//if retransmits are NOT enabled
+		else if (!zconf.should_retransmit && s->state.sent >= max_targets) {
+                        s->cb(s->id, s->arg);
+                        log_trace("send", "send thread %hhu finished (max targets of %u reached)", s->id, max_targets);
+                        break;
+                }
+
 		if (zconf.max_runtime && zconf.max_runtime <= now() - zsend.start) {
 			s->cb(s->id, s->arg);
 			break;
 		}
-		//Bano:  Used to be if(curr==0)
-		if (retransmit_remaining==2) {
+		// if retransmits are enabled
+		if (zconf.should_retransmit && retransmit_remaining==2) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished, shard depleted", s->id);
 			break;
 		}
+		//if retransmits are NOT enabled
+		else if (!zconf.should_retransmit && curr==0) {
+                        s->cb(s->id, s->arg);
+                        log_trace("send", "send thread %hhu finished, shard depleted", s->id);
+                        break;
+                }
 		//s->state.sent++;
 		for (int i=0; i < zconf.packet_streams; i++) {
 			uint32_t src_ip = get_src_ip(curr, i);
@@ -290,16 +319,7 @@ int send_run(sock_t st, shard_t *s)
         			while (clock()<endwait);
 				}
 			*/
-		//Bano: uncomment for debugging
-		/*	lock_file(stdout);
-			if(zconf.mode_retransmit==0)
-				fprintf(stdout,"^\t%f\t%s\n",now(),make_ip_str(curr));
-			//fprintf(stdout,"^\t%f\t%lu\n",now(),curr);
-			else
-				fprintf(stdout,"^R\t%f\t%s\n",now(),make_ip_str(curr));
-			unlock_file(stdout);
-		*/
-
+	
 			if (zconf.dryrun) 	{
 				lock_file(stdout);
 				zconf.probe_module->print_packet(stdout, buf);
@@ -308,7 +328,19 @@ int send_run(sock_t st, shard_t *s)
 				int length = zconf.probe_module->packet_length;
 				void *contents = buf + zconf.send_ip_pkts*sizeof(struct ether_header);
 				for (int i = 0; i < attempts; ++i) {
-					
+	
+					//Bano: uncomment for debugging			  
+	     				/*	
+					lock_file(stdout);
+                        		if(zconf.mode_retransmit==0)
+                                		fprintf(stdout,"^\t%f\t%s\n",now(),make_ip_str(curr));
+                        		//fprintf(stdout,"^\t%f\t%lu\n",now(),curr);
+                        		else
+                                		fprintf(stdout,"^R\t%f\t%s\n",now(),make_ip_str(curr));
+                        		unlock_file(stdout);
+                			//****************
+					*/
+
 					int rc = send_packet(st, contents, length, idx);
 					if (rc < 0) {
 						struct in_addr addr;
@@ -319,6 +351,7 @@ int send_run(sock_t st, shard_t *s)
 					} else {
 						break;
 					}
+					
 				}
 				idx++;
 				idx &= 0xFF;
@@ -326,9 +359,12 @@ int send_run(sock_t st, shard_t *s)
 		}
 
 		// Packet retransmission code begins
-		if(count_retransmit==IP_RETRANSMIT_SIZE || retransmit_remaining==1)
+		// if K IP addresses have been scanned OR the last n%K IP addreses
+		// have been scanned (indicated by retransmit_remaining=1)
+		if(zconf.should_retransmit && (count_retransmit==IP_RETRANSMIT_SIZE || retransmit_remaining==1))
 			{
 			//printf("*********RETRANSMITING************\n");
+			// now retransmission mode
 			zconf.mode_retransmit=1;	
 			if(retransmit_remaining==1 && idx_retransmit==0)
 				{
@@ -358,27 +394,51 @@ int send_run(sock_t st, shard_t *s)
                                                 validate_gen(src_ip, curr, (uint8_t *)validation);
                                                 zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
 
+						//Bano: uncomment for debugging
+						/*
+						lock_file(stdout);
+						fprintf(stdout,"^RX\t%f\t%s\n",now(),make_ip_str(curr));	
+						unlock_file(stdout);
+						*/
+						//************
                                                 } 
 				}
 
 			curr=ips_to_retransmit[idx_retransmit++];
+			s->state.retransmitted++;
 
 			if(idx_retransmit==count_retransmit)
 				{ 
 				if(retransmit_remaining==1)
-                                        retransmit_remaining=2;
+					{
+                                        retransmit_remaining=2;	
+					}
                                         
 				idx_retransmit=0;
 				count_retransmit=0;
+			
+				lock_file(stdout);
+                                fprintf(stdout,"^retransmission batch complete at %f with %d sent\n",now(),s->state.sent);
+                                unlock_file(stdout);
 				}
 			}
 		else
 			{
+			// Send mode
 			zconf.mode_retransmit=0;
 			s->state.sent++;
 			curr = shard_get_next_ip(s);
-			ips_to_retransmit[count_retransmit++]=curr;
-			if(curr==0 || s->state.sent >= max_targets)
+
+			/*
+			lock_file(stdout);
+			fprintf(stdout,"^Y\t%f\t%s\n",now(),make_ip_str(curr));
+			unlock_file(stdout);
+			*/
+
+			 if(zconf.should_retransmit)
+				ips_to_retransmit[count_retransmit++]=curr;
+
+			if(zconf.should_retransmit && (curr==0 || s->state.sent >= max_targets))
 				{
 				if(max_targets>IP_RETRANSMIT_SIZE && max_targets%IP_RETRANSMIT_SIZE!=0)
 					{
@@ -389,7 +449,12 @@ int send_run(sock_t st, shard_t *s)
 					retransmit_remaining=1;
 					}
 				else
+					{
 					retransmit_remaining=2;
+					lock_file(stdout);
+                                        fprintf(stdout,"^last sent check complete at %f and sent %d\n",now(),s->state.sent);
+                                        unlock_file(stdout);
+					}
 				}
 			}
 	}

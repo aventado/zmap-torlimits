@@ -58,7 +58,7 @@ int synscan_make_packet(void *buf, ipaddr_n_t src_ip, ipaddr_n_t dst_ip,
 	ip_header->ip_dst.s_addr = dst_ip;
    
 	uint16_t the_source_port=htons(zconf.source_port_retransmit);
-	if(zconf.mode_retransmit==0)
+	if(!zconf.should_retransmit || zconf.mode_retransmit==0)
 		the_source_port=htons(get_src_port(num_ports,
                                               probe_num, validation));
  
@@ -132,7 +132,7 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
         // Bano: Validating the packet by matching packet dst port with the
         // corresponding global zmap scan src port
         // NOTE: This will not work if multiple source ports have been configured
-        if (ntohs(dport) != zconf.source_port_first && ntohs(dport) != zconf.source_port_retransmit) {
+        if (ntohs(dport) != zconf.source_port_first && (zconf.should_retransmit && (ntohs(dport) != zconf.source_port_retransmit))) {
 			//debug
 			//log_warn("monitor","VALIDATE_TCP_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
 			return 0;
@@ -183,7 +183,7 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
         // Bano: Validating the packet by matching packet dst port with the
         // corresponding global zmap scan src port
         // NOTE: This will not work if multiple source ports have been configured
-        if (ntohs(inner_sport) != zconf.source_port_first && ntohs(inner_sport) != zconf.source_port_retransmit) {
+        if (ntohs(inner_sport) != zconf.source_port_first && (zconf.should_retransmit && ntohs(inner_sport) != zconf.source_port_retransmit)) {
 			//debug
 			//log_warn("monitor","VALIDATE_ICMP_TCP_SPORT_FAIL. %s:%u-->%s:%u",make_ip_str(inner_src_ip),ntohs(inner_sport),make_ip_str(inner_dst_ip),ntohs(inner_dport));
 			return 0;
@@ -233,7 +233,10 @@ void synscan_process_packet(const u_char *packet,
         fs_add_uint64(fs, "seqnum", (uint64_t) ntohl(tcp->th_seq));
         fs_add_uint64(fs, "acknum", (uint64_t) ntohl(tcp->th_ack));
         fs_add_uint64(fs, "window", (uint64_t) ntohs(tcp->th_win));
-	if (ntohs(tcp->th_dport) == zconf.source_port_retransmit)
+	
+	if (zconf.source_port_first == zconf.source_port_retransmit)
+                fs_add_string(fs, "is_retransmit", "X", 0);
+	else if (ntohs(tcp->th_dport) == zconf.source_port_retransmit)
                 fs_add_string(fs, "is_retransmit", "R", 0);
         else
                 fs_add_string(fs, "is_retransmit", "S", 0);
@@ -261,7 +264,9 @@ void synscan_process_packet(const u_char *packet,
         fs_add_null(fs, "acknum");
         fs_add_null(fs, "window");
 
-	 if (ntohs(inner_tcp->th_sport) == zconf.source_port_retransmit)
+	 if (zconf.source_port_first == zconf.source_port_retransmit)
+                fs_add_string(fs, "is_retransmit", "X", 0);
+	 else if (ntohs(inner_tcp->th_sport) == zconf.source_port_retransmit)
                 fs_add_string(fs, "is_retransmit", "R", 0);
         else
                 fs_add_string(fs, "is_retransmit", "S", 0);

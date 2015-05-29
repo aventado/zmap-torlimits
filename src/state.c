@@ -13,6 +13,7 @@
 // global configuration and defaults
 struct state_conf zconf = {
 	.log_level = LOG_INFO,
+	.should_retransmit=0,
 	.mode_retransmit = 0,
 	.source_port_retransmit = 41591,
 	.source_port_first = 32768, // (these are the default
@@ -71,6 +72,7 @@ struct state_send zsend = {
 	.start = 0.0,
 	.finish = 0.0,
 	.sent = 0,
+	.retransmitted = 0,
 	.blacklisted = 0,
 	.whitelisted = 0,
 	.complete = 0,

@@ -38,6 +38,7 @@ void summary(void)
 	SU("cnf", "target-port", zconf.target_port);
 	SU("cnf", "source-port-range-begin", zconf.source_port_first);
 	SU("cnf", "source-port-range-end", zconf.source_port_last);
+	SU("cnf", "source-port-retransmit", zconf.source_port_retransmit);
 	SS("cnf", "source-addr-range-begin", zconf.source_ip_first);
 	SS("cnf", "source-addr-range-end", zconf.source_ip_last);
 	SU("cnf", "maximum-targets", zconf.max_targets);
@@ -57,6 +58,7 @@ void summary(void)
 	SS("exc", "recv-start-time", recv_start_time);
 	SS("exc", "recv-end-time", recv_end_time);
 	SU("exc", "sent", zsend.sent);
+	SU("exc", "retransmitted", zsend.retransmitted);
 	SU("exc", "blacklisted", zsend.blacklisted);
 	SU("exc", "whitelisted", zsend.whitelisted);
 	SU("exc", "first-scanned", zsend.first_scanned);
@@ -71,6 +73,8 @@ void summary(void)
 	SU("exc", "success-cooldown-total", zrecv.cooldown_total);
 	SU("exc", "success-cooldown-unique", zrecv.cooldown_unique);
 	SU("exc", "failure-total", zrecv.failure_total);
+    SU("exc", "tcp-badlen", zrecv.tcp_badlen);
+    SU("exc", "icmp-badlen", zrecv.icmp_badlen);
 	SU("exc", "sendto-failures", zsend.sendto_failures);
 	SU("adv", "permutation-gen", zconf.generator);
 	SS("exc", "scan-type", zconf.probe_module->name);
@@ -179,6 +183,10 @@ void json_metadata(FILE *file)
 
 	json_object_object_add(obj, "success-total",
             json_object_new_int64(zrecv.success_total));
+    json_object_object_add(obj, "tcp-badlen",
+                           json_object_new_int64(zrecv.tcp_badlen));
+    json_object_object_add(obj, "icmp-badlen",
+                           json_object_new_int64(zrecv.icmp_badlen));
 	json_object_object_add(obj, "success-unique",
             json_object_new_int64(zrecv.success_unique));
 	if (zconf.fsconf.app_success_index >= 0) {

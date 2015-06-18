@@ -15,6 +15,10 @@ section "Basic arguments"
 option "target-port"            p "port number to scan (for TCP and UDP scans)"
     typestr="port"
     optional int
+option "retransmit-port"            x "port number to use for retransmits (TCP scan only)"
+    typestr="port"
+    optional int
+
 option "output-file"            o "Output file"
     typestr="name"
     optional string
@@ -57,6 +61,8 @@ option "retries"                - "Max number of times to try to send packet if 
     default="10"
     optional int
 option "dryrun"                 d "Don't actually send packets"
+    optional
+option "retransmit"                 R "Don't retransmit packets"
     optional
 option "shards"                 - "Set the total number of shards"
     typestr="N"

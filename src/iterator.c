@@ -32,6 +32,7 @@ void shard_complete(uint8_t thread_id, void *arg)
 	it->curr_threads--;
 	shard_t *s = &it->thread_shards[thread_id];
 	zsend.sent += s->state.sent;
+	zsend.retransmitted += s->state.retransmitted;
 	zsend.blacklisted += s->state.blacklisted;
 	zsend.whitelisted += s->state.whitelisted;
 	zsend.sendto_failures += s->state.failures;
@@ -40,6 +41,11 @@ void shard_complete(uint8_t thread_id, void *arg)
 		done = done && it->complete[i];
 	}
 	if (done) {
+		        
+                        lock_file(stdout);
+                        fprintf(stdout,"^zsend finished at %f\n",now());
+                        unlock_file(stdout);
+                        
 		zsend.finish = now();
 		zsend.complete = 1;
 		zsend.first_scanned = it->thread_shards[0].state.first_scanned;

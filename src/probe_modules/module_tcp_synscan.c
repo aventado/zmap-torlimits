@@ -95,16 +95,22 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
 {
     uint32_t src_ip_t = ip_hdr->ip_src.s_addr;
     uint32_t dst_ip_t = ip_hdr->ip_dst.s_addr;
-    
+    char *dipstr;   
+ 
     // Bano: Validating the packet by matching packet dst IP with the
     // corresponding global zmap scan source IP
     // NOTE: This will not work if multiple source IPs have been configured
-    if (strcmp(make_ip_str(dst_ip_t),zconf.source_ip_first)!=0) {
+    //if (strcmp(make_ip_str(dst_ip_t),zconf.source_ip_first)!=0) {
+    dipstr = make_ip_str(dst_ip_t);
+    if (strcmp(dipstr,zconf.source_ip_first)!=0) {
         //debug
         //log_warn("monitor","VALIDATE_SRCIP_FAIL. %s-->%s",make_ip_str(src_ip_t),make_ip_str(dst_ip_t));
+	free(dipstr);
         return 0;
     }
-    
+
+    free(dipstr);    
+
     if (ip_hdr->ip_p == IPPROTO_TCP) {
 	    //debug
 	    //log_warn("monitor","VALIDATE_TCP_PKT");
@@ -249,6 +255,7 @@ void synscan_process_packet(const u_char *packet,
         struct ip *ip_inner = (struct ip*) ((char *) icmp+8);
 
 	struct tcphdr *inner_tcp = (struct tcphdr*)((char *) ip_inner + 4*ip_inner->ip_hl);
+	char *dipstr;
        
         fs_add_string(fs, "classification", (char*) "2", 0);
         fs_add_uint64(fs, "success", 1);
@@ -256,7 +263,8 @@ void synscan_process_packet(const u_char *packet,
         fs_add_null(fs, "dport");
         // Get inner dest ip
         //struct in_addr inner_dst_ip = ip_inner->ip_dst;
-        fs_add_string(fs, "inner_daddr", make_ip_str(ip_inner->ip_dst.s_addr), 0);
+	dipstr = make_ip_str(ip_inner->ip_dst.s_addr);
+        fs_add_string(fs, "inner_daddr", dipstr, 1);
         fs_add_uint64(fs, "icmp_type", icmp->icmp_type);
         fs_add_uint64(fs, "icmp_code", icmp->icmp_code);
         //These are TCP specific fields and adding null for icmp

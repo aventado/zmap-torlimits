@@ -235,13 +235,20 @@ int send_run(sock_t st, shard_t *s)
 	// keeps track of how many packets have been sent in the Send mode
         int count_retransmit=0;
 	// iterates through the queue ips_to_retransmit
-        int idx_retransmit=0;
+        int idx_ips_to_retransmit=0;
 	// this operates in three modes: 0 means regular mode, that is 
 	// K Send packets then K retransmits and so forth. 1 means that
 	// the last n%K packets have been sent and 2 means that the last
-	// n%K packets have been retransmitted and it's time to stop sending
-	// out any more packets
-        int retransmit_remaining=0;
+	// n%K packets have been retransmitted
+        int retransmit_switch=0;
+	// How many times to iterate through ips_to_retransmit. Effectively, 
+	// this translates to how many probes to send per IP address
+	int n_probes=3;
+	// keeps track of which iteration of retransmissions is this
+	int idx_probes=0;
+	// indicates if all sends and retransmissions have completed and 
+	// it's time to stop
+	int all_done=0;
 	
 	uint32_t curr = shard_get_cur_ip(s);
 	ips_to_retransmit[count_retransmit++]=curr;
@@ -271,7 +278,9 @@ int send_run(sock_t st, shard_t *s)
 		}
 
 		//if retransmits are enabled
-		if(zconf.should_retransmit && (s->state.sent >= max_targets && retransmit_remaining==2)) {
+		// Bano: It seems that this one is a subset of the one below that just checks
+		// if retransmit_switch is 2
+		if(zconf.should_retransmit && (s->state.sent >= max_targets && all_done==1)) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished (max targets of %u reached)", s->id, max_targets);
 			break;
@@ -289,7 +298,7 @@ int send_run(sock_t st, shard_t *s)
 			break;
 		}
 		// if retransmits are enabled
-		if (zconf.should_retransmit && retransmit_remaining==2) {
+		if (zconf.should_retransmit && all_done==1) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished, shard depleted", s->id);
 			break;
@@ -360,13 +369,18 @@ int send_run(sock_t st, shard_t *s)
 
 		// Packet retransmission code begins
 		// if K IP addresses have been scanned OR the last n%K IP addreses
-		// have been scanned (indicated by retransmit_remaining=1)
-		if(zconf.should_retransmit && (count_retransmit==IP_RETRANSMIT_SIZE || retransmit_remaining==1))
+		// have been scanned (indicated by retransmit_switch=1)
+		if(zconf.should_retransmit && (count_retransmit==IP_RETRANSMIT_SIZE || retransmit_switch==1))
 			{
 			//printf("*********RETRANSMITING************\n");
 			// now retransmission mode
 			zconf.mode_retransmit=1;	
-			if(retransmit_remaining==1 && idx_retransmit==0)
+		
+			// Bano: If n%K packets are being retransmitted (indicated by retransmit_switch),
+			// then prior to that waste some time crafting n-n%K dummy packets, before actually
+			// transmitting the n%k packets. The idea is that we want to have consistent delay
+			// between an original probe and the corresponding repeat probe 
+			if(retransmit_switch==1 && idx_ips_to_retransmit==0)
 				{
 				int max_idx=IP_RETRANSMIT_SIZE-(max_targets%IP_RETRANSMIT_SIZE);
 				for(int x=0; x<max_idx; x++)
@@ -404,17 +418,23 @@ int send_run(sock_t st, shard_t *s)
                                                 } 
 				}
 
-			curr=ips_to_retransmit[idx_retransmit++];
+			curr=ips_to_retransmit[idx_ips_to_retransmit++];
 			s->state.retransmitted++;
 
-			if(idx_retransmit==count_retransmit)
-				{ 
-				if(retransmit_remaining==1)
+			// Bano: If the num. of packets retransmitted (idx_ips_to_retransmit) equals
+			// the number of original probes in the send orbit
+			// Note: I use count_retransmit instead of IP_RETRANSMIT_SIZE because if
+			// n%K!=0, then in the last orbit idx_ips_to_retransmit will be less than
+			// IP_RETRANSMIT_SIZE 
+			if(idx_ips_to_retransmit==count_retransmit)
+				{
+				// Bano: If the last n%K packets have been retransmitted  
+				if(retransmit_switch==1)
 					{
-                                        retransmit_remaining=2;	
+                                        retransmit_switch=2;	
 					}
                                         
-				idx_retransmit=0;
+				idx_ips_to_retransmit=0;
 				count_retransmit=0;
 			
 				lock_file(stdout);
@@ -435,22 +455,31 @@ int send_run(sock_t st, shard_t *s)
 			unlock_file(stdout);
 			*/
 
-			 if(zconf.should_retransmit)
+			// Bano: Add the next IP address to scan to the retransmission queue
+			if(zconf.should_retransmit)
 				ips_to_retransmit[count_retransmit++]=curr;
 
+			// Bano: If retransmissions are on, and send finish conditions have been reached,
+			// that is, the entire v4 has been scanned (curr=0), OR maximum targets have
+			// been scanned
 			if(zconf.should_retransmit && (curr==0 || s->state.sent >= max_targets))
 				{
+				// Bano: If the packets sent in this orbit correspond to the last n%K
+				// IP addresses, in which case, we just send a dummy packet to the local
+				// loopback and then switch to retransmission of the last n%K packets
 				if(max_targets>IP_RETRANSMIT_SIZE && max_targets%IP_RETRANSMIT_SIZE!=0)
 					{
 					//printf("*********RETRANSMITING************\n");
-					//curr=ips_to_retransmit[idx_retransmit++];
+					//curr=ips_to_retransmit[idx_ips_to_retransmit++];
 					// local loopback 
 					curr=16777343;
-					retransmit_remaining=1;
+					retransmit_switch=1;
 					}
+				// Bano: If we are coming here after retransmission of a regular orbit
+				// and find there is no more to send
 				else
 					{
-					retransmit_remaining=2;
+					retransmit_switch=2;
 					lock_file(stdout);
                                         fprintf(stdout,"^last sent check complete at %f and sent %d\n",now(),s->state.sent);
                                         unlock_file(stdout);

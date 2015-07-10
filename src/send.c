@@ -350,8 +350,7 @@ int send_run(sock_t st, shard_t *s)
                                         unlock_file(stdout);
 					*/
                                         //****************  
-					int rc=1;
-					//int rc = send_packet(st, contents, length, idx);
+					int rc = send_packet(st, contents, length, idx);
 					if (rc < 0) {
 						struct in_addr addr;
 						addr.s_addr = curr;

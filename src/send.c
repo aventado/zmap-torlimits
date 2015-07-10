@@ -24,7 +24,8 @@
 #include "../lib/blacklist.h"
 #include "../lib/lockfd.h"
 
-#define IP_RETRANSMIT_SIZE 1000000
+//#define IP_RETRANSMIT_SIZE 1000000
+#define IP_RETRANSMIT_SIZE 10
 
 #include "aesrand.h"
 #include "get_gateway.h"
@@ -339,16 +340,16 @@ int send_run(sock_t st, shard_t *s)
 				for (int i = 0; i < attempts; ++i) {
 	
 					//Bano: uncomment for debugging			  
-	     				/*	
+	     					
 					lock_file(stdout);
                         		if(zconf.mode_retransmit==0)
-                                		fprintf(stdout,"^\t%f\t%s\n",now(),make_ip_str(curr));
+                                		fprintf(stdout,"^S\t-\t%f\t%s\n",now(),make_ip_str(curr));
                         		//fprintf(stdout,"^\t%f\t%lu\n",now(),curr);
                         		else
-                                		fprintf(stdout,"^R\t%f\t%s\n",now(),make_ip_str(curr));
+                                		fprintf(stdout,"^R\t%d\t%f\t%s\n",idx_probes,now(),make_ip_str(curr));
                         		unlock_file(stdout);
                 			//****************
-					*/
+					
 
 					int rc = send_packet(st, contents, length, idx);
 					if (rc < 0) {
@@ -428,32 +429,44 @@ int send_run(sock_t st, shard_t *s)
 			// IP_RETRANSMIT_SIZE 
 			if(idx_ips_to_retransmit==count_retransmit)
 				{
-				// Bano: If the last n%K packets have been retransmitted  
-				if(retransmit_switch==1)
+				 // Bano: Increment the number of retransmission iterations done
+				 idx_probes++;
+
+				// Bano: If the last n%K packets have been retransmitted for
+				// the desired number of retransmit iterations, then stop  
+				if(retransmit_switch == 1 && idx_probes > n_probes)
 					{
-                                        retransmit_switch=2;	
+                                        //retransmit_switch=2;
+					all_done=1;	
 					}
                                         
 				idx_ips_to_retransmit=0;
-				count_retransmit=0;
-			
-				lock_file(stdout);
-                                fprintf(stdout,"^retransmission batch complete at %f with %d sent\n",now(),s->state.sent);
-                                unlock_file(stdout);
+				idx_probes++;				
+
+				if(idx_probes > n_probes)
+					count_retransmit=0;
+	
+				//lock_file(stdout);
+                                //fprintf(stdout,"^retransmission batch complete at %f with %d sent\n",now(),s->state.sent);
+                                //unlock_file(stdout);
 				}
 			}
 		else
 			{
 			// Send mode
 			zconf.mode_retransmit=0;
+
+			// Bano: Reset restransmit iterations to 0
+			idx_probes=0;
+
 			s->state.sent++;
 			curr = shard_get_next_ip(s);
 
-			/*
-			lock_file(stdout);
-			fprintf(stdout,"^Y\t%f\t%s\n",now(),make_ip_str(curr));
-			unlock_file(stdout);
-			*/
+			
+			//lock_file(stdout);
+			//fprintf(stdout,"^Y\t%f\t%s\n",now(),make_ip_str(curr));
+			//unlock_file(stdout);
+			
 
 			// Bano: Add the next IP address to scan to the retransmission queue
 			if(zconf.should_retransmit)
@@ -479,7 +492,9 @@ int send_run(sock_t st, shard_t *s)
 				// and find there is no more to send
 				else
 					{
-					retransmit_switch=2;
+					// retransmit_switch=2;
+					all_done=1;
+
 					lock_file(stdout);
                                         fprintf(stdout,"^last sent check complete at %f and sent %d\n",now(),s->state.sent);
                                         unlock_file(stdout);

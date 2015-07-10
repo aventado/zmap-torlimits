@@ -24,8 +24,8 @@
 #include "../lib/blacklist.h"
 #include "../lib/lockfd.h"
 
-//#define IP_RETRANSMIT_SIZE 1000000
-#define IP_RETRANSMIT_SIZE 10
+#define IP_RETRANSMIT_SIZE 1000000
+//#define IP_RETRANSMIT_SIZE 10
 
 #include "aesrand.h"
 #include "get_gateway.h"
@@ -244,7 +244,7 @@ int send_run(sock_t st, shard_t *s)
         int retransmit_switch=0;
 	// How many times to iterate through ips_to_retransmit. Effectively, 
 	// this translates to how many probes to send per IP address
-	int n_probes=3;
+	int n_probes=2;
 	// keeps track of which iteration of retransmissions is this
 	int idx_probes=0;
 	// indicates if all sends and retransmissions have completed and 
@@ -338,20 +338,20 @@ int send_run(sock_t st, shard_t *s)
 				int length = zconf.probe_module->packet_length;
 				void *contents = buf + zconf.send_ip_pkts*sizeof(struct ether_header);
 				for (int i = 0; i < attempts; ++i) {
-	
-					//Bano: uncomment for debugging			  
-	     					
-					lock_file(stdout);
-                        		if(zconf.mode_retransmit==0)
-                                		fprintf(stdout,"^S\t-\t%f\t%s\n",now(),make_ip_str(curr));
-                        		//fprintf(stdout,"^\t%f\t%lu\n",now(),curr);
-                        		else
-                                		fprintf(stdout,"^R\t%d\t%f\t%s\n",idx_probes,now(),make_ip_str(curr));
-                        		unlock_file(stdout);
-                			//****************
-					
 
-					int rc = send_packet(st, contents, length, idx);
+					//Bano: uncomment for debugging  
+					/*                 
+                                        lock_file(stdout);
+                                        if(zconf.mode_retransmit==0)
+                                                fprintf(stdout,"^S\t-\t%f\t%s\n",now(),make_ip_str(curr));
+                                        //fprintf(stdout,"^\t%f\t%lu\n",now(),curr);
+                                        else
+                                                fprintf(stdout,"^R\t%d\t%f\t%s\n",idx_probes,now(),make_ip_str(curr));
+                                        unlock_file(stdout);
+					*/
+                                        //****************  
+					int rc=1;
+					//int rc = send_packet(st, contents, length, idx);
 					if (rc < 0) {
 						struct in_addr addr;
 						addr.s_addr = curr;
@@ -361,7 +361,6 @@ int send_run(sock_t st, shard_t *s)
 					} else {
 						break;
 					}
-					
 				}
 				idx++;
 				idx &= 0xFF;
@@ -410,9 +409,9 @@ int send_run(sock_t st, shard_t *s)
                                                 zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
 
 						//Bano: uncomment for debugging
-						/*
+						/*	
 						lock_file(stdout);
-						fprintf(stdout,"^RX\t%f\t%s\n",now(),make_ip_str(curr));	
+						fprintf(stdout,"^RX\t%d\t%f\t%s\n",idx_probes,now(),make_ip_str(curr));	
 						unlock_file(stdout);
 						*/
 						//************
@@ -434,16 +433,17 @@ int send_run(sock_t st, shard_t *s)
 
 				// Bano: If the last n%K packets have been retransmitted for
 				// the desired number of retransmit iterations, then stop  
-				if(retransmit_switch == 1 && idx_probes > n_probes)
+				if(retransmit_switch == 1 && idx_probes == n_probes)
 					{
                                         //retransmit_switch=2;
 					all_done=1;	
 					}
+				if(retransmit_switch == 1)
+					curr=16777343;
                                         
 				idx_ips_to_retransmit=0;
-				idx_probes++;				
 
-				if(idx_probes > n_probes)
+				if(idx_probes == n_probes)
 					count_retransmit=0;
 	
 				//lock_file(stdout);
@@ -495,9 +495,13 @@ int send_run(sock_t st, shard_t *s)
 					// retransmit_switch=2;
 					all_done=1;
 
+					//Bano: uncomment for debugging
+					/*  
 					lock_file(stdout);
                                         fprintf(stdout,"^last sent check complete at %f and sent %d\n",now(),s->state.sent);
                                         unlock_file(stdout);
+					*/
+					//*******************
 					}
 				}
 			}

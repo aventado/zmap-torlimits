@@ -206,6 +206,11 @@ int recv_run(pthread_mutex_t *recv_ready_mutex)
 	zconf.recv_ready = 1;
 	pthread_mutex_unlock(recv_ready_mutex);
 	zrecv.start = now();
+
+        // Bano: update stats and make first entry to the log file
+        recv_update_stats();
+        log_warn("monitor INITIAL", "total dropped (pcap: %u + iface: %u))",zrecv.pcap_drop,zrecv.pcap_ifdrop);
+                         
 	if (zconf.max_results == 0) {
 		zconf.max_results = -1;
 	}

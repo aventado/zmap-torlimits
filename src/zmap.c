@@ -266,8 +266,10 @@ static void start_zmap(void)
     
 	// finished
 	if (zconf.summary) {
+		log_warn("monitor FINAL", "total dropped (pcap: %u + iface: %u))",zrecv.pcap_drop,zrecv.pcap_ifdrop);
 		summary();
 	}
+
 #ifdef JSON
 	if (zconf.metadata_filename) {
 		json_metadata(zconf.metadata_file);

@@ -18,8 +18,9 @@
 
 #include "probe_modules/probe_modules.h"
 
-#define PCAP_PROMISC 1
+#define PCAP_PROMISC 0
 #define PCAP_TIMEOUT 1000
+#define PCAP_BUFFERSIZE 1073741824
 
 static pcap_t *pc = NULL;
 
@@ -43,12 +44,54 @@ void packet_cb(u_char __attribute__((__unused__)) *user,
 void recv_init()
 {
 	char errbuf[PCAP_ERRBUF_SIZE];
+/*
 	pc = pcap_open_live(zconf.iface, zconf.probe_module->pcap_snaplen,
 					PCAP_PROMISC, PCAP_TIMEOUT, errbuf);
 	if (pc == NULL) {
 		log_fatal("recv", "could not open device %s: %s",
 						zconf.iface, errbuf);
 	}
+*/
+
+	        int status = 0;
+
+        pc = pcap_create(zconf.iface, errbuf);
+
+        if (pc == NULL) {
+                log_fatal("recv", "could not open device %s: %s",
+                                                zconf.iface, errbuf);
+        }
+
+
+        status = pcap_set_snaplen(pc, zconf.probe_module->pcap_snaplen);
+        if (status < 0) {
+                log_fatal("recv", "could not set snaplen on device %s: %s",
+                                                zconf.iface, errbuf);
+        }
+
+
+        status = pcap_set_promisc(pc, PCAP_PROMISC);
+        if (status < 0) {
+                log_fatal("recv", "could not set mode on device %s: %s",
+                                                zconf.iface, errbuf);
+        }
+
+
+        status = pcap_set_timeout(pc, PCAP_TIMEOUT);
+        if (status < 0) {
+                log_fatal("recv", "could not set pcap timeout on device %s: %s",
+                                                zconf.iface, errbuf);
+        }
+
+
+        status = pcap_set_buffer_size(pc, PCAP_BUFFERSIZE);
+        if (status < 0) {
+                log_fatal("recv", "could not set buffersize on device %s: %s",
+                                                zconf.iface, errbuf);
+        }
+
+        pcap_activate(pc);
+
 	struct bpf_program bpf;
 	if (pcap_compile(pc, &bpf, zconf.probe_module->pcap_filter, 1, 0) < 0) {
 		log_fatal("recv", "couldn't compile filter");

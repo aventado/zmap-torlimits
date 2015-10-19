@@ -244,7 +244,7 @@ int send_run(sock_t st, shard_t *s)
         int retransmit_switch=0;
 	// How many times to iterate through ips_to_retransmit. Effectively, 
 	// this translates to how many probes to send per IP address
-	int n_probes=2;
+	int n_probes=1;
 	// keeps track of which iteration of retransmissions is this
 	int idx_probes=0;
 	// indicates if all sends and retransmissions have completed and 

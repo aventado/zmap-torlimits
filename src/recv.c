@@ -234,12 +234,15 @@ int recv_run(pthread_mutex_t *recv_ready_mutex)
 		*/
 		} while (!(zsend.complete && (now()-zsend.finish > zconf.cooldown_secs)));
 
+	//Bano: Uncomment for debugging
+	/*
 	if(now()-zsend.finish > zconf.cooldown_secs)
                         {
                         lock_file(stdout);
                         fprintf(stdout,"^zsend.cooldown done at %f\n",now());
                         unlock_file(stdout);
                         }
+	*/
 	zrecv.finish = now();
 
 	// get final pcap statistics before closing

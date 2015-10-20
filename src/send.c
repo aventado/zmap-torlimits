@@ -24,8 +24,8 @@
 #include "../lib/blacklist.h"
 #include "../lib/lockfd.h"
 
-#define IP_RETRANSMIT_SIZE 1000000
-//#define IP_RETRANSMIT_SIZE 10
+//#define IP_RETRANSMIT_SIZE 1000000
+#define IP_RETRANSMIT_SIZE 10
 
 #include "aesrand.h"
 #include "get_gateway.h"
@@ -180,7 +180,10 @@ int send_run(sock_t st, shard_t *s)
 	pthread_mutex_lock(&send_mutex);
 	// Allocate a buffer to hold the outgoing packet
 	char buf[MAX_PACKET_SIZE];
+	// //Bano: Allocate a buffer to hold the outgoing ACK packet
+        char buf_ack[MAX_PACKET_SIZE];
 	memset(buf, 0, MAX_PACKET_SIZE);
+	memset(buf_ack, 0, MAX_PACKET_SIZE);
 
 	// OS specific per-thread init
 	if (send_run_init(st)) {
@@ -205,6 +208,9 @@ int send_run(sock_t st, shard_t *s)
 	if (zconf.probe_module->thread_initialize) {
 		zconf.probe_module->thread_initialize(buf, zconf.hw_mac, zconf.gw_mac,
 					      zconf.target_port, &probe_data);
+	        //Bano: For ack packet
+		zconf.probe_module->thread_initialize(buf_ack, zconf.hw_mac, zconf.gw_mac,
+                                              zconf.target_port, &probe_data);
 	}
 	pthread_mutex_unlock(&send_mutex);
 
@@ -281,14 +287,14 @@ int send_run(sock_t st, shard_t *s)
 		//if retransmits are enabled
 		// Bano: It seems that this one is a subset of the one below that just checks
 		// if retransmit_switch is 2
-		if(zconf.should_retransmit && (s->state.sent >= max_targets && all_done==1)) {
+		if(zconf.should_retransmit && zconf.is_ack==1 && (s->state.sent >= max_targets && all_done==1)) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished (max targets of %u reached)", s->id, max_targets);
 			break;
 		}
 		
 		//if retransmits are NOT enabled
-		else if (!zconf.should_retransmit && s->state.sent >= max_targets) {
+		else if (!zconf.should_retransmit && zconf.is_ack==1 && s->state.sent >= max_targets) {
                         s->cb(s->id, s->arg);
                         log_trace("send", "send thread %hhu finished (max targets of %u reached)", s->id, max_targets);
                         break;
@@ -299,13 +305,13 @@ int send_run(sock_t st, shard_t *s)
 			break;
 		}
 		// if retransmits are enabled
-		if (zconf.should_retransmit && all_done==1) {
+		if (zconf.should_retransmit && zconf.is_ack==1 && all_done==1) {
 			s->cb(s->id, s->arg);
 			log_trace("send", "send thread %hhu finished, shard depleted", s->id);
 			break;
 		}
 		//if retransmits are NOT enabled
-		else if (!zconf.should_retransmit && curr==0) {
+		else if (!zconf.should_retransmit && zconf.is_ack==1 && curr==0) {
                         s->cb(s->id, s->arg);
                         log_trace("send", "send thread %hhu finished, shard depleted", s->id);
                         break;
@@ -316,8 +322,12 @@ int send_run(sock_t st, shard_t *s)
 
 		  	uint32_t validation[VALIDATE_BYTES/sizeof(uint32_t)];
 			validate_gen(src_ip, curr, (uint8_t *)validation);
-			zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
-
+			if(zconf.is_ack==0)
+				zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
+			// Bano: For ack packet
+			else if(zconf.is_ack==1)
+				zconf.probe_module->make_packet(buf_ack, src_ip, curr, validation, i, probe_data);
+	
 			/*
 			// Bano: If it is repeat of a probe,
                         // inject delay of 10 sec
@@ -332,11 +342,16 @@ int send_run(sock_t st, shard_t *s)
 	
 			if (zconf.dryrun) 	{
 				lock_file(stdout);
-				zconf.probe_module->print_packet(stdout, buf);
+				if(zconf.is_ack==0)
+					zconf.probe_module->print_packet(stdout, buf);
+				//Bano: display ack packet
+				else
+					zconf.probe_module->print_packet(stdout, buf_ack);
 				unlock_file(stdout);
 			} else {
 				int length = zconf.probe_module->packet_length;
 				void *contents = buf + zconf.send_ip_pkts*sizeof(struct ether_header);
+				void *contents_ack = buf_ack + zconf.send_ip_pkts*sizeof(struct ether_header);
 				for (int i = 0; i < attempts; ++i) {
 
 					//Bano: uncomment for debugging  
@@ -349,17 +364,30 @@ int send_run(sock_t st, shard_t *s)
                                                 fprintf(stdout,"^R\t%d\t%f\t%s\n",idx_probes,now(),make_ip_str(curr));
                                         unlock_file(stdout);
 					*/
-                                        //****************  
-					int rc = send_packet(st, contents, length, idx);
-					if (rc < 0) {
-						struct in_addr addr;
-						addr.s_addr = curr;
-						log_warn("monitor", "send_packet failed for %s. %s",
-								  inet_ntoa(addr), strerror(errno));
-						s->state.failures++;
-					} else {
-						break;
+                                        //****************
+
+					int rc=0;
+					//Bano: Send ack packet
+					if(zconf.is_ack==1)
+					{
+						rc = send_packet(st, contents_ack, length, idx);
+						zconf.is_ack=0;
 					}
+					//Bano: Else send syn packet
+					else
+					{
+						rc = send_packet(st, contents, length, idx);
+						zconf.is_ack=1;
+					}
+                                        if (rc < 0) {
+                                                struct in_addr addr;
+                                                addr.s_addr = curr;
+                                                log_warn("monitor", "send_packet failed for %s. %s",
+                                                                  inet_ntoa(addr), strerror(errno));
+                                                s->state.failures++;
+                                        } else {
+                                                break;
+                                        }
 				}
 				idx++;
 				idx &= 0xFF;
@@ -370,6 +398,8 @@ int send_run(sock_t st, shard_t *s)
 		// if K IP addresses have been scanned OR the last n%K IP addreses
 		// have been scanned (indicated by retransmit_switch=1)
 		if(zconf.should_retransmit && (count_retransmit==IP_RETRANSMIT_SIZE || retransmit_switch==1))
+			{
+			if(zconf.is_ack==1)
 			{
 			//printf("*********RETRANSMITING************\n");
 			// now retransmission mode
@@ -405,8 +435,11 @@ int send_run(sock_t st, shard_t *s)
                                                 uint32_t src_ip = get_src_ip(curr, i);
                                                 uint32_t validation[VALIDATE_BYTES/sizeof(uint32_t)];
                                                 validate_gen(src_ip, curr, (uint8_t *)validation);
-                                                zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
-
+						if(zconf.is_ack==0)
+                                                	zconf.probe_module->make_packet(buf, src_ip, curr, validation, i, probe_data);
+						//Bano: Also make a dummy ack packet
+						else
+							zconf.probe_module->make_packet(buf_ack, src_ip, curr, validation, i, probe_data);
 						//Bano: uncomment for debugging
 						/*	
 						lock_file(stdout);
@@ -450,7 +483,10 @@ int send_run(sock_t st, shard_t *s)
                                 //unlock_file(stdout);
 				}
 			}
+			}
 		else
+			{
+			if(zconf.is_ack==1) 
 			{
 			// Send mode
 			zconf.mode_retransmit=0;
@@ -459,6 +495,7 @@ int send_run(sock_t st, shard_t *s)
 			idx_probes=0;
 
 			s->state.sent++;
+
 			curr = shard_get_next_ip(s);
 
 			
@@ -503,6 +540,7 @@ int send_run(sock_t st, shard_t *s)
 					//*******************
 					}
 				}
+			}
 			}
 	}
 	if (zconf.dryrun) {

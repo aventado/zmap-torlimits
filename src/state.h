@@ -41,6 +41,8 @@ struct fieldset_conf {
 struct state_conf {
 	int log_level;
 	port_h_t target_port;
+	// Bano: Is it an ack pkt (1) or syn pkt (0) 
+	int is_ack;
 	// Bano: for retransmits
 	// the program should do retransmits or not
 	int should_retransmit;
@@ -49,6 +51,8 @@ struct state_conf {
 	int mode_retransmit;
 	// the port from which to retransmit probes
 	port_h_t source_port_retransmit;
+	// the port from which to transmit ack probes
+        port_h_t source_port_ack;
 
 	port_h_t source_port_first;
 	port_h_t source_port_last;

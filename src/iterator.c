@@ -41,10 +41,12 @@ void shard_complete(uint8_t thread_id, void *arg)
 		done = done && it->complete[i];
 	}
 	if (done) {
-		        
+		       //Bano: Uncomment fpr debugging
+			/* 
                         lock_file(stdout);
                         fprintf(stdout,"^zsend finished at %f\n",now());
                         unlock_file(stdout);
+			*/
                         
 		zsend.finish = now();
 		zsend.complete = 1;

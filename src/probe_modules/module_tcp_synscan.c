@@ -157,8 +157,8 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
 			return 0;
         }
         
-        // validate tcp acknowledgement number
-        if (htonl(tcp->th_ack) != htonl(validation[0])+1) {
+        // validate tcp acknowledgement number for responses to syn scan
+        if (ntohs(dport) != zconf.source_port_ack && htonl(tcp->th_ack) != htonl(validation[0])+1) {
             //log_warn("monitor","VALIDATE_TCP_ACK_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
             return 0;
         }

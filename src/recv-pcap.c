@@ -38,7 +38,9 @@ void packet_cb(u_char __attribute__((__unused__)) *user,
 	}
 	// length of entire packet captured by libpcap
 	uint32_t buflen = (uint32_t) p->caplen;
-	handle_packet(buflen, bytes);
+	struct timeval t = p->ts;
+	// Bano: pass a third pcap timestamp argument
+	handle_packet(buflen, bytes, t.tv_usec);
 }
 
 void recv_init()

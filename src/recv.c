@@ -29,7 +29,8 @@ static u_char fake_eth_hdr[65535];
 // bitmap of observed IP addresses
 static uint8_t **seen = NULL;
 
-void handle_packet(uint32_t buflen, const u_char *bytes) {
+
+void handle_packet(uint32_t buflen, const u_char *bytes, uint64_t ts_pcap) {
 	if ((sizeof(struct ip) + (zconf.send_ip_pkts ? 0 : sizeof(struct ether_header))) > buflen) {
 		// buffer not large enough to contain ethernet
 		// and ip headers. further action would overrun buf
@@ -119,7 +120,9 @@ void handle_packet(uint32_t buflen, const u_char *bytes) {
     //Bano: This is hacky, ideally should add this in packet process function.
     // Also during postprocessing, remember to do validation+1 for tcp
     fs_add_uint64(fs, "validation", validation[0]);
-    
+  	// Bano: Add pcap timestamp here and comment out system timestamp
+	// being added in the function fs_add_system_fields 
+	fs_add_uint64(fs, "timestamp-us", ts_pcap); 
 	fs_add_system_fields(fs, is_repeat, zsend.complete);
 	int success_index = zconf.fsconf.success_index;
 	assert(success_index < fs->len);

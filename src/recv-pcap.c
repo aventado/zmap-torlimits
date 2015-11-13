@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include "recv.h"
 
 #include <stdlib.h>
@@ -40,7 +41,8 @@ void packet_cb(u_char __attribute__((__unused__)) *user,
 	uint32_t buflen = (uint32_t) p->caplen;
 	struct timeval t = p->ts;
 	// Bano: pass a third pcap timestamp argument
-	handle_packet(buflen, bytes, t.tv_usec);
+	// fprintf(stdout,"^%ld.%06ld\n", (long int)(t.tv_sec), (long int)(t.tv_usec));
+	handle_packet(buflen, bytes, t);
 }
 
 void recv_init()

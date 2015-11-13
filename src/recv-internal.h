@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 // Bano: Add an extra parameter, pcap_timestamp, to the end
-void handle_packet(uint32_t buflen, const uint8_t *bytes, uint64_t ts_pcap);
+void handle_packet(uint32_t buflen, const uint8_t *bytes, struct timeval t);
 void recv_init();
 void recv_packets();
 void recv_cleanup();

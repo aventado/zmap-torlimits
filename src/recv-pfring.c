@@ -50,7 +50,9 @@ void recv_packets()
 	}
 	// Successfully got a packet, now handle it
 	// Bano: send a dummy timestamp
-	handle_packet(pf_buffer->len, pf_buffer->data, 0);
+	struct timeval t;
+        gettimeofday(&t, NULL);
+	handle_packet(pf_buffer->len, pf_buffer->data, t);
 }
 
 

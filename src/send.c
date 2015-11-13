@@ -24,8 +24,8 @@
 #include "../lib/blacklist.h"
 #include "../lib/lockfd.h"
 
-#define IP_RETRANSMIT_SIZE 1000000
-//#define IP_RETRANSMIT_SIZE 50
+//#define IP_RETRANSMIT_SIZE 1000000
+#define IP_RETRANSMIT_SIZE 50
 
 #include "aesrand.h"
 #include "get_gateway.h"

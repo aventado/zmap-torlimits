@@ -120,11 +120,6 @@ void handle_packet(uint32_t buflen, const u_char *bytes, struct timeval t) {
     	//Bano: This is hacky, ideally should add this in packet process function.
     	// Also during postprocessing, remember to do validation+1 for tcp
     	fs_add_uint64(fs, "validation", validation[0]);
-  	// Bano: Add pcap timestamp here and comment out system timestamp
-	// being added in the function fs_add_system_fields 
-	// Bano: debug
-        //fprintf(stdout,"^%" PRIu64 "\n", ts_pcap);
-	//fs_add_uint64(fs, "timestamp-us", ts_pcap); 
 	fs_add_system_fields(fs, is_repeat, zsend.complete, t);
 	int success_index = zconf.fsconf.success_index;
 	assert(success_index < fs->len);

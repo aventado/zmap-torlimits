@@ -15,7 +15,7 @@ struct state_conf zconf = {
 	.log_level = LOG_INFO,
 	// Bano: by default ack probes are on
 	.is_ack=1,
-	.should_retransmit=1,
+	.should_retransmit=0,
 	.mode_retransmit = 0,
 	.source_port_retransmit = 41591,
 	// Bano: source port for ack probes

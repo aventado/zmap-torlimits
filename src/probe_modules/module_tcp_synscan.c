@@ -93,7 +93,10 @@ int synscan_make_packet(void *buf, ipaddr_n_t src_ip, ipaddr_n_t dst_ip,
     
 	ip_header->ip_sum = 0;
 	ip_header->ip_sum = zmap_ip_checksum((unsigned short *) ip_header);
-    
+   
+	// Bano: Uncomment for debugging
+	//fprintf(stdout,"^is_ack:%d\tsrc_port:%d\tshud_rexmit:%d\n",zconf.is_ack,ntohs(the_source_port),zconf.should_retransmit);	
+ 
 	return EXIT_SUCCESS;
 }
 
@@ -161,14 +164,14 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
         // Bano: Validating the packet by matching packet dst port with the
         // corresponding global zmap scan src port
         // NOTE: This will not work if multiple source ports have been configured
-        if (ntohs(dport) != zconf.source_port_first && ntohs(dport) != zconf.source_port_ack && (zconf.should_retransmit && (ntohs(dport) != zconf.source_port_retransmit))) {
+        if (ntohs(dport) != zconf.source_port_first && ntohs(dport) != zconf.source_port_ack && zconf.should_retransmit==0 || (zconf.should_retransmit==1 && ntohs(dport) != zconf.source_port_first && ntohs(dport) != zconf.source_port_ack && ntohs(dport) != zconf.source_port_retransmit && ntohs(dport) != zconf.source_port_ack_retransmit)) {
 			//debug
 			//log_warn("monitor","VALIDATE_TCP_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
 			return 0;
         }
         
         // validate tcp acknowledgement number for responses to syn scan
-        if (ntohs(dport) != zconf.source_port_ack && htonl(tcp->th_ack) != htonl(validation[0])+1) {
+        if (ntohs(dport) != zconf.source_port_ack && ntohs(dport) != zconf.source_port_ack_retransmit && htonl(tcp->th_ack) != htonl(validation[0])+1) {
             //log_warn("monitor","VALIDATE_TCP_ACK_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
             return 0;
         }
@@ -212,14 +215,14 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
         // Bano: Validating the packet by matching packet dst port with the
         // corresponding global zmap scan src port
         // NOTE: This will not work if multiple source ports have been configured
-        if (ntohs(inner_sport) != zconf.source_port_first && ntohs(inner_sport) != zconf.source_port_ack && (zconf.should_retransmit && ntohs(inner_sport) != zconf.source_port_retransmit)) {
+        if (ntohs(inner_sport) != zconf.source_port_first && ntohs(inner_sport) != zconf.source_port_ack && zconf.should_retransmit==0 || (zconf.should_retransmit==1 && ntohs(inner_sport) != zconf.source_port_first && ntohs(inner_sport) != zconf.source_port_ack && ntohs(inner_sport) != zconf.source_port_retransmit && ntohs(inner_sport) != zconf.source_port_ack_retransmit)) {
 			//debug
 			//log_warn("monitor","VALIDATE_ICMP_TCP_SPORT_FAIL. %s:%u-->%s:%u",make_ip_str(inner_src_ip),ntohs(inner_sport),make_ip_str(inner_dst_ip),ntohs(inner_dport));
 			return 0;
         }
         
-        // validate tcp acknowledgement number
-        if ( htonl(inner_tcp->th_seq) != htonl(validation[0]) ) {
+        // validate tcp acknowledgement number for syn probes
+        if ( (ntohs(inner_sport) == zconf.source_port_first || ntohs(inner_sport) == zconf.source_port_retransmit) && htonl(inner_tcp->th_seq) != htonl(validation[0]) ) {
             //debug
             //log_warn("monitor","VALIDATE_ICMP_TCP_ACK_FAIL. %s:%u:%u-->%s:%u:%u",make_ip_str(inner_src_ip),ntohs(inner_sport),htonl(inner_tcp->th_ack),make_ip_str(inner_dst_ip),ntohs(inner_dport),htonl(validation[0]));
             return 0;
@@ -271,12 +274,12 @@ void synscan_process_packet(const u_char *packet,
 	else if (ntohs(tcp->th_dport) == zconf.source_port_first)
                 fs_add_string(fs, "is_retransmit", "S", 0);
 
-	if(zconf.should_retransmit)
+	if(zconf.should_retransmit==1)
 	{
 		if (ntohs(tcp->th_dport) == zconf.source_port_ack_retransmit)
- 	               fs_add_string(fs, "is_retransmit", "AX", 0);
+ 	               fs_add_string(fs, "is_retransmit", "XA", 0);
         	else if (ntohs(tcp->th_dport) == zconf.source_port_retransmit)
-                	fs_add_string(fs, "is_retransmit", "SX", 0);
+                	fs_add_string(fs, "is_retransmit", "XS", 0);
 	}	
        
     }
@@ -345,7 +348,7 @@ static fielddef_t fields[] = {
 probe_module_t module_tcp_synscan = {
 	.name = "tcp_synscan",
 	.packet_length = 54,
-    .pcap_filter = "((dst port 41590 or dst port 41592) and (tcp[13] & 4 != 0 || tcp[13] == 18))",
+    .pcap_filter = "((dst port 41590 or dst port 41591 or dst port 41592 or dst port 41593) and (tcp[13] & 4 != 0 || tcp[13] == 18))",
 	.pcap_snaplen = 96,
 	.port_args = 1,
 	.global_initialize = &synscan_global_initialize,

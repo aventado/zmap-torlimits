@@ -262,16 +262,23 @@ void synscan_process_packet(const u_char *packet,
         fs_add_uint64(fs, "seqnum", (uint64_t) ntohl(tcp->th_seq));
         fs_add_uint64(fs, "acknum", (uint64_t) ntohl(tcp->th_ack));
         fs_add_uint64(fs, "window", (uint64_t) ntohs(tcp->th_win));
-	
+
+	// Bano: Determine response corresponds to which type of probe
+	// (syn-no-retransmit, syn-retransmit, ack-no-retransmit, ack-retransmit)
+	// based on destination port 
 	if (ntohs(tcp->th_dport) == zconf.source_port_ack)
                 fs_add_string(fs, "is_retransmit", "A", 0);
-	else if (zconf.source_port_first == zconf.source_port_retransmit)
-                fs_add_string(fs, "is_retransmit", "X", 0);
-	else if (ntohs(tcp->th_dport) == zconf.source_port_retransmit)
-                fs_add_string(fs, "is_retransmit", "R", 0);
-        else
+	else if (ntohs(tcp->th_dport) == zconf.source_port_first)
                 fs_add_string(fs, "is_retransmit", "S", 0);
-        
+
+	if(zconf.should_retransmit)
+	{
+		if (ntohs(tcp->th_dport) == zconf.source_port_ack_retransmit)
+ 	               fs_add_string(fs, "is_retransmit", "AX", 0);
+        	else if (ntohs(tcp->th_dport) == zconf.source_port_retransmit)
+                	fs_add_string(fs, "is_retransmit", "SX", 0);
+	}	
+       
     }
     else if (ip_hdr->ip_p == IPPROTO_ICMP) {
         

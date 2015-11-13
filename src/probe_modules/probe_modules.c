@@ -72,15 +72,18 @@ void fs_add_ip_fields(fieldset_t *fs, struct ip *ip)
 
 #define TIMESTR_LEN 55
 
-void fs_add_system_fields(fieldset_t *fs, int is_repeat, int in_cooldown)
+// Bano: Added a third parameter, that is, pcap_pkthdr->ts
+void fs_add_system_fields(fieldset_t *fs, int is_repeat, int in_cooldown, struct timeval t)
 {
 	fs_add_uint64(fs, "repeat", is_repeat);
 	fs_add_uint64(fs, "cooldown", in_cooldown);
 
 	char *timestr = xmalloc(TIMESTR_LEN+1);
 	char *timestr_ms = xmalloc(TIMESTR_LEN+1);
-	struct timeval t;
+	// Bano: We are now getting time from pcap_pkthdr->ts
+	/*struct timeval t;
 	gettimeofday(&t, NULL);
+	*/
 	struct tm *ptm = localtime(&t.tv_sec);
 	strftime(timestr, TIMESTR_LEN, "%Y-%m-%dT%H:%M:%S.%%03d%z", ptm);
 	snprintf(timestr_ms, TIMESTR_LEN, timestr, t.tv_usec/1000);
@@ -89,7 +92,7 @@ void fs_add_system_fields(fieldset_t *fs, int is_repeat, int in_cooldown)
 	fs_add_uint64(fs, "timestamp-ts", (uint64_t) t.tv_sec);
 	// Bano I am adding pcap timestamp instead in src/recv.c just
 	// before handle_packet calls this function
-	//fs_add_uint64(fs, "timestamp-us", (uint64_t) t.tv_usec);
+	fs_add_uint64(fs, "timestamp-us", (uint64_t) t.tv_usec);
 }
 
 int ip_fields_len = 6;

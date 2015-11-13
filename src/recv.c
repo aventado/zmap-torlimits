@@ -125,7 +125,7 @@ void handle_packet(uint32_t buflen, const u_char *bytes, struct timeval t) {
 	// Bano: debug
         //fprintf(stdout,"^%" PRIu64 "\n", ts_pcap);
 	//fs_add_uint64(fs, "timestamp-us", ts_pcap); 
-	fs_add_system_fields(fs, is_repeat, zsend.complete);
+	fs_add_system_fields(fs, is_repeat, zsend.complete, t);
 	int success_index = zconf.fsconf.success_index;
 	assert(success_index < fs->len);
 	int is_success = fs_get_uint64_by_index(fs, success_index);

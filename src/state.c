@@ -17,9 +17,11 @@ struct state_conf zconf = {
 	.is_ack=1,
 	.should_retransmit=0,
 	.mode_retransmit = 0,
-	.source_port_retransmit = 41590,
+	.source_port_retransmit = 41591,
 	// Bano: source port for ack probes
 	.source_port_ack = 41592,
+	// Bano: source port for ack retransmit probes
+        .source_port_ack_retransmit = 41593,
 	.source_port_first = 32768, // (these are the default
 	.source_port_last = 61000,	//	 ephemeral range on Linux)
 	.output_filename = NULL,

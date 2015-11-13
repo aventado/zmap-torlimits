@@ -53,6 +53,8 @@ struct state_conf {
 	port_h_t source_port_retransmit;
 	// the port from which to transmit ack probes
         port_h_t source_port_ack;
+	// the port from which to transmit ack restransmit probes
+        port_h_t source_port_ack_retransmit;
 
 	port_h_t source_port_first;
 	port_h_t source_port_last;

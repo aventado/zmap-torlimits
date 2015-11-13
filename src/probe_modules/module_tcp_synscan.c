@@ -57,11 +57,17 @@ int synscan_make_packet(void *buf, ipaddr_n_t src_ip, ipaddr_n_t dst_ip,
 	ip_header->ip_src.s_addr = src_ip;
 	ip_header->ip_dst.s_addr = dst_ip;
   
+	// Bano: By default lets use ack-non-retransmit port
 	uint16_t the_source_port=htons(zconf.source_port_ack);
+
+	// Bano: If it's a syn probe
 	if(zconf.is_ack==0) 
 	{
+		// Bano: Set the syn-retransmit-port
 		the_source_port=htons(zconf.source_port_retransmit);
 	
+		// Bano: If retransmissions are not enabled or we are not in
+		// retransmission mode, set the syn-no-retransmit port
 		if(!zconf.should_retransmit || zconf.mode_retransmit==0)
 			the_source_port=htons(get_src_port(num_ports,
                         	                      probe_num, validation));
@@ -70,9 +76,13 @@ int synscan_make_packet(void *buf, ipaddr_n_t src_ip, ipaddr_n_t dst_ip,
 	// (originally set in packet.c)
 	else
 	{
-	tcp_header->th_flags = 0;
-	tcp_header->th_flags|=TH_ACK;
-	tcp_header->th_ack=10;
+		// Bano: If retransmits are enabled and it's an ack probe and we are
+        	// in retransmit mode, set the ack-retransmit-port
+		if(zconf.should_retransmit && zconf.mode_retransmit==1)
+                	the_source_port=htons(zconf.source_port_ack_retransmit);
+		tcp_header->th_flags = 0;
+		tcp_header->th_flags|=TH_ACK;
+		tcp_header->th_ack=10;
 	}		
 		
 	tcp_header->th_sport = the_source_port;

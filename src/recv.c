@@ -29,7 +29,9 @@ static u_char fake_eth_hdr[65535];
 // bitmap of observed IP addresses
 static uint8_t **seen = NULL;
 
-void handle_packet(uint32_t buflen, const u_char *bytes) {
+//void handle_packet(uint32_t buflen, const u_char *bytes) {
+// Bano: The third argument wasn't originally there
+void handle_packet(uint32_t buflen, const u_char *bytes, struct timeval t) {
 	if ((sizeof(struct ip) + (zconf.send_ip_pkts ? 0 : sizeof(struct ether_header))) > buflen) {
 		// buffer not large enough to contain ethernet
 		// and ip headers. further action would overrun buf
@@ -116,11 +118,10 @@ void handle_packet(uint32_t buflen, const u_char *bytes) {
 	}
 	zconf.probe_module->process_packet(bytes, buflen, fs);
     
-    //Bano: This is hacky, ideally should add this in packet process function.
-    // Also during postprocessing, remember to do validation+1 for tcp
-    fs_add_uint64(fs, "validation", validation[0]);
-    
-	fs_add_system_fields(fs, is_repeat, zsend.complete);
+    	//Bano: This is hacky, ideally should add this in packet process function.
+    	// Also during postprocessing, remember to do validation+1 for tcp
+    	fs_add_uint64(fs, "validation", validation[0]);
+   	fs_add_system_fields(fs, is_repeat, zsend.complete, t); 
 	int success_index = zconf.fsconf.success_index;
 	assert(success_index < fs->len);
 	int is_success = fs_get_uint64_by_index(fs, success_index);
@@ -234,12 +235,15 @@ int recv_run(pthread_mutex_t *recv_ready_mutex)
 		*/
 		} while (!(zsend.complete && (now()-zsend.finish > zconf.cooldown_secs)));
 
+	//Bano: Uncomment for debugging
+        /*
 	if(now()-zsend.finish > zconf.cooldown_secs)
                         {
                         lock_file(stdout);
                         fprintf(stdout,"^zsend.cooldown done at %f\n",now());
                         unlock_file(stdout);
                         }
+	*/
 	zrecv.finish = now();
 
 	// get final pcap statistics before closing

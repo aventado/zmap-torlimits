@@ -379,8 +379,8 @@ int main(int argc, char *argv[])
 		log_debug("zmap", "no output module provided. will use csv.");
 		zconf.output_module = get_output_module_by_name("csv");
 		zconf.raw_output_fields = (char*) "saddr";
-		zconf.filter_duplicates = 1;
-		zconf.filter_unsuccessful = 1;
+		zconf.filter_duplicates = 0;
+		zconf.filter_unsuccessful = 0;
 	} else if (!strcmp(args.output_module_arg, "simple_file")) {
 		log_warn("zmap", "the simple_file output interface has been deprecated and "
 				 "will be removed in the future. Users should use the csv "
@@ -388,8 +388,8 @@ int main(int argc, char *argv[])
 				 "are not supported with this output module.");
 		zconf.output_module = get_output_module_by_name("csv");
 		zconf.raw_output_fields = (char*) "saddr";
-		zconf.filter_duplicates = 1;
-		zconf.filter_unsuccessful = 1;
+		zconf.filter_duplicates = 0;
+		zconf.filter_unsuccessful = 0;
 	} else if (!strcmp(args.output_module_arg, "extended_file")) {
 		log_warn("zmap", "the extended_file output interface has been deprecated and "
 				 "will be removed in the future. Users should use the csv "
@@ -412,8 +412,8 @@ int main(int argc, char *argv[])
                       CMDLINE_PARSER_PACKAGE, args.output_module_arg);
 		}
 		zconf.raw_output_fields = (char*) "saddr";
-		zconf.filter_duplicates = 1;
-		zconf.filter_unsuccessful = 1;
+		zconf.filter_duplicates = 0;
+		zconf.filter_unsuccessful = 0;
 		if (args.output_fields_given) {
 			log_fatal("redis", "module does not support user defined "
                       "output fields");

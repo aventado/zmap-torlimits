@@ -71,7 +71,7 @@ static int redismodule_flush(void)
 	return EXIT_SUCCESS;
 }
 
-int redismodule_process(fieldset_t *fs)
+int redismodule_process(fieldset_t *fs, int is_repeat, int is_success)
 {
 	field_t *f = &(fs->fields[field_index]);
 	buffer[buffer_fill] = (uint32_t) f->value.num;

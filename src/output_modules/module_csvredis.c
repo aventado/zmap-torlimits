@@ -47,7 +47,7 @@ int csvredis_close(struct state_conf* c, struct state_send* s, struct state_recv
 	return EXIT_SUCCESS;
 }
 
-int csvredis_process(fieldset_t *fs)
+int csvredis_process(fieldset_t *fs, int is_repeat, int is_success)
 {
 	csv_process(fs);
 	int is_success = fs_get_uint64_by_index(fs, success_index);

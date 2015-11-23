@@ -70,7 +70,7 @@ static void hex_encode(FILE *f, unsigned char* readbuf, size_t len)
 	}
 }
 
-int csv_process(fieldset_t *fs)
+int csv_process(fieldset_t *fs, int is_repeat, int is_success)
 {
 	if (!file) {
 		return EXIT_SUCCESS;

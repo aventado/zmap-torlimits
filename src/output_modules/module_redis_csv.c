@@ -147,7 +147,7 @@ void make_csv_string(fieldset_t *fs, char *out, size_t len)
 	}
 }
 
-int rediscsvmodule_process(fieldset_t *fs)
+int rediscsvmodule_process(fieldset_t *fs, int is_repeat, int is_success)
 {
 	size_t reqd_space = guess_csv_string_length(fs);
 	char *x = xmalloc(reqd_space);

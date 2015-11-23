@@ -16,7 +16,7 @@
 typedef int (*output_init_cb)(struct state_conf *, char **fields, int fieldslen);
 
 // called on packet receipt
-typedef int (*output_packet_cb)(fieldset_t *fs);
+typedef int (*output_packet_cb)(fieldset_t *fs, int is_repeat, int is_success);
 
 // called periodically during the scan
 typedef int (*output_update_cb)(struct state_conf*,

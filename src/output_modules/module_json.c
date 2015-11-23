@@ -139,7 +139,7 @@ static void json_output_file_store_data(json_object *obj, const u_char *packet, 
 	free(buf);
 }
 
-int json_output_file_ip(fieldset_t *fs)
+int json_output_file_ip(fieldset_t *fs, int is_repeat, int is_success)
 {
 	if (!file) {
 		return EXIT_SUCCESS;

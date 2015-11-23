@@ -176,7 +176,7 @@ void handle_packet(uint32_t buflen, const u_char *bytes, struct timeval t) {
 	}
 	o = translate_fieldset(fs, &zconf.fsconf.translation);
 	if (zconf.output_module && zconf.output_module->process_ip) {
-		zconf.output_module->process_ip(o);
+		zconf.output_module->process_ip(o,is_repeat,is_success);
 	}
 cleanup:
 	fs_free(fs);

@@ -224,7 +224,7 @@ void synscan_process_packet(const u_char *packet,
         
         if (tcp->th_flags & TH_RST) { // RST packet
             fs_add_string(fs, "classification", (char*) "0", 0);
-            fs_add_uint64(fs, "success", 1);
+            fs_add_uint64(fs, "success", 0);
         } else { // SYNACK packet
             fs_add_string(fs, "classification", (char*) "1", 0);
             fs_add_uint64(fs, "success", 1);
@@ -258,7 +258,7 @@ void synscan_process_packet(const u_char *packet,
 	char *dipstr;
        
         fs_add_string(fs, "classification", (char*) "2", 0);
-        fs_add_uint64(fs, "success", 1);
+        fs_add_uint64(fs, "success", 0);
         fs_add_null(fs, "sport");
         fs_add_null(fs, "dport");
         // Get inner dest ip

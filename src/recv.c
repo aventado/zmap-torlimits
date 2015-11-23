@@ -24,6 +24,8 @@
 #include "probe_modules/probe_modules.h"
 #include "output_modules/output_modules.h"
 
+#include "probe_modules/packet.h"
+
 static u_char fake_eth_hdr[65535];
 
 // bitmap of observed IP addresses
@@ -100,8 +102,15 @@ void handle_packet(uint32_t buflen, const u_char *bytes, struct timeval t) {
 		return;
 	}
     
-	int is_repeat = 0; //= pbm_check(seen, ntohl(src_ip));
-    
+	int is_repeat =  pbm_check(seen, ntohl(src_ip));
+	
+	// Bano: Uncomment for debug
+	/* 
+	lock_file(stdout);
+        fprintf(stdout,"^%s\t%d\n",make_ip_str(src_ip),is_repeat);
+        unlock_file(stdout);
+	*/
+	   
 	fieldset_t *fs = fs_new_fieldset();
 	fs_add_ip_fields(fs, ip_hdr);
 	// HACK:

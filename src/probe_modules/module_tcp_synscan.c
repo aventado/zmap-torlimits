@@ -144,8 +144,8 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
 			return 0;
         }
         
-        // validate tcp acknowledgement number
-        if (htonl(tcp->th_ack) != htonl(validation[0])+1) {
+        // validate tcp acknowledgement number for syn-ack packets
+        if (!(tcp->th_flags & TH_RST) && (htonl(tcp->th_ack) != htonl(validation[0])+1)) {
             //log_warn("monitor","VALIDATE_TCP_ACK_FAIL. %s:%u-->%s:%u",make_ip_str(src_ip_t),ntohs(sport),make_ip_str(dst_ip_t),ntohs(dport));
             return 0;
         }
@@ -195,7 +195,7 @@ int synscan_validate_packet(const struct ip *ip_hdr, uint32_t len,
 			return 0;
         }
         
-        // validate tcp acknowledgement number
+        // validate tcp seq number
         if ( htonl(inner_tcp->th_seq) != htonl(validation[0]) ) {
             //debug
             //log_warn("monitor","VALIDATE_ICMP_TCP_ACK_FAIL. %s:%u:%u-->%s:%u:%u",make_ip_str(inner_src_ip),ntohs(inner_sport),htonl(inner_tcp->th_ack),make_ip_str(inner_dst_ip),ntohs(inner_dport),htonl(validation[0]));
@@ -311,7 +311,7 @@ static fielddef_t fields[] = {
 probe_module_t module_tcp_synscan = {
 	.name = "tcp_synscan",
 	.packet_length = 54,
-    .pcap_filter = "(dst port 41590 and (tcp[13] & 4 != 0 || tcp[13] == 18))",
+    .pcap_filter = "((dst port 41590 or dst port 41591) and (tcp[13] & 4 != 0 || tcp[13] == 18))",
 	.pcap_snaplen = 96,
 	.port_args = 1,
 	.global_initialize = &synscan_global_initialize,

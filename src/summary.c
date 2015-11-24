@@ -15,16 +15,22 @@
 #include "probe_modules/probe_modules.h"
 #include "output_modules/output_modules.h"
 
-
 #define SI(w,x,y) printf("%s\t%s\t%i\n", w, x, y);
 #define SD(w,x,y) printf("%s\t%s\t%f\n", w, x, y);
 #define SU(w,x,y) printf("%s\t%s\t%u\n", w, x, y);
 #define SLU(w,x,y) printf("%s\t%s\t%lu\n", w, x, (long unsigned int) y);
 #define SS(w,x,y) printf("%s\t%s\t%s\n", w, x, y);
+
+
 #define STRTIME_LEN 1024
 
 void summary(void)
 {
+	FILE *summ_file = NULL;
+	if (!(summ_file = fopen("zmap_summary.log", "w"))) {
+                                log_fatal("csv", "could not open summary file");
+                        }
+
 	char send_start_time[STRTIME_LEN+1];
 	assert(dstrftime(send_start_time, STRTIME_LEN, "%c", zsend.start));
 	char send_end_time[STRTIME_LEN+1];
@@ -34,7 +40,53 @@ void summary(void)
 	char recv_end_time[STRTIME_LEN+1];
 	assert(dstrftime(recv_end_time, STRTIME_LEN, "%c", zrecv.finish));
 	double hitrate = ((double) 100 * zrecv.success_unique)/((double)zsend.sent);
+	
+        fprintf(summ_file,"%s\t%s\t%u\n", "cnf", "target-port", zconf.target_port);
+	fprintf(summ_file,"%s\t%s\t%u\n", "cnf", "source-port-range-begin", zconf.source_port_first);
+	fprintf(summ_file,"%s\t%s\t%u\n", "cnf", "source-port-range-end", zconf.source_port_last);
+	fprintf(summ_file,"%s\t%s\t%u\n", "cnf", "source-port-retransmit", zconf.source_port_retransmit);        
+	fprintf(summ_file,"%s\t%s\t%s\n", "cnf", "source-addr-range-begin", zconf.source_ip_first);
+	fprintf(summ_file,"%s\t%s\t%s\n", "cnf", "source-addr-range-end", zconf.source_ip_last);
+        fprintf(summ_file,"%s\t%s\t%u\n","cnf", "maximum-targets", zconf.max_targets);
+        fprintf(summ_file,"%s\t%s\t%u\n","cnf", "maximum-runtime", zconf.max_runtime);
+        fprintf(summ_file,"%s\t%s\t%u\n","cnf", "maximum-results", zconf.max_results);
+        fprintf(summ_file,"%s\t%s\t%lu\n", "cnf", "permutation-seed", (long unsigned int) zconf.seed);
+        fprintf(summ_file,"%s\t%s\t%i\n","cnf", "cooldown-period", zconf.cooldown_secs);
+        fprintf(summ_file,"%s\t%s\t%s\n","cnf", "send-interface", zconf.iface);
+        fprintf(summ_file,"%s\t%s\t%i\n","cnf", "rate", zconf.rate);
+        fprintf(summ_file,"%s\t%s\t%lu\n", "cnf", "bandwidth", (long unsigned int) zconf.bandwidth);
+        fprintf(summ_file,"%s\t%s\t%u\n","cnf", "shard-num", (unsigned) zconf.shard_num);
+        fprintf(summ_file,"%s\t%s\t%u\n","cnf", "num-shards", (unsigned) zconf.total_shards);
+        fprintf(summ_file,"%s\t%s\t%u\n","cnf", "senders", (unsigned) zconf.senders);
+        fprintf(summ_file,"%s\t%s\t%u\n","env", "nprocessors", (unsigned) sysconf(_SC_NPROCESSORS_ONLN));
+        fprintf(summ_file,"%s\t%s\t%s\n","exc", "send-start-time", send_start_time);
+        fprintf(summ_file,"%s\t%s\t%s\n","exc", "send-end-time", send_end_time);
+        fprintf(summ_file,"%s\t%s\t%s\n","exc", "recv-start-time", recv_start_time);
+        fprintf(summ_file,"%s\t%s\t%s\n","exc", "recv-end-time", recv_end_time);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "sent", zsend.sent);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "retransmitted", zsend.retransmitted);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "blacklisted", zsend.blacklisted);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "whitelisted", zsend.whitelisted);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "first-scanned", zsend.first_scanned);
+        fprintf(summ_file,"%s\t%s\t%f\n","exc", "hit-rate", hitrate);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "success-total", zrecv.success_total);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "success-unique", zrecv.success_unique);
+        // if there are application-level status messages, output
+        if (zconf.fsconf.app_success_index >= 0) {
+                fprintf(summ_file,"%s\t%s\t%u\n","exc", "app-success-total", zrecv.app_success_total);
+                fprintf(summ_file,"%s\t%s\t%u\n","exc", "app-success-unique", zrecv.app_success_unique);
+        }
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "success-cooldown-total", zrecv.cooldown_total);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "success-cooldown-unique", zrecv.cooldown_unique);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "failure-total", zrecv.failure_total);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "tcp-badlen", zrecv.tcp_badlen);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "icmp-badlen", zrecv.icmp_badlen);
+        fprintf(summ_file,"%s\t%s\t%u\n","exc", "sendto-failures", zsend.sendto_failures);
+        fprintf(summ_file,"%s\t%s\t%u\n","adv", "permutation-gen", zconf.generator);
+        fprintf(summ_file,"%s\t%s\t%s\n","exc", "scan-type", zconf.probe_module->name);
 
+	fclose(summ_file);
+/*
 	SU("cnf", "target-port", zconf.target_port);
 	SU("cnf", "source-port-range-begin", zconf.source_port_first);
 	SU("cnf", "source-port-range-end", zconf.source_port_last);
@@ -73,11 +125,12 @@ void summary(void)
 	SU("exc", "success-cooldown-total", zrecv.cooldown_total);
 	SU("exc", "success-cooldown-unique", zrecv.cooldown_unique);
 	SU("exc", "failure-total", zrecv.failure_total);
-    SU("exc", "tcp-badlen", zrecv.tcp_badlen);
-    SU("exc", "icmp-badlen", zrecv.icmp_badlen);
+    	SU("exc", "tcp-badlen", zrecv.tcp_badlen);
+    	SU("exc", "icmp-badlen", zrecv.icmp_badlen);
 	SU("exc", "sendto-failures", zsend.sendto_failures);
 	SU("adv", "permutation-gen", zconf.generator);
 	SS("exc", "scan-type", zconf.probe_module->name);
+*/
 #ifdef JSON
     if (zconf.notes) {
 	    SS("exc", "notes", zconf.notes);

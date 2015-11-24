@@ -101,29 +101,18 @@ int csv_process(fieldset_t *fs, int is_repeat, int is_success)
 	// Bano: Also print to stdout if it's a successful response
 	// being seen for the first time
 	if(is_success && !is_repeat) {
-		for (int i=0; i < fs->len; i++) {
-        	      	 field_t *f = &(fs->fields[i]);
-        	       	 if (i) {
-        	       	         fprintf(stdout, ",");
-        	       	 }
-        	       	 if (f->type == FS_STRING) {
-        	       	         if (strchr((char*) f->value.ptr, ',')) {
-        	       	                 fprintf(stdout, "\"%s\"", (char*) f->value.ptr);
-        	       	         } else {
-        	       	                 fprintf(stdout, "%s", (char*) f->value.ptr);
-        	       	         }
-        	       	 } else if (f->type == FS_UINT64) {
-        	       	 	         fprintf(stdout, "%" PRIu64, (uint64_t) f->value.num);
-        	       	 } else if (f->type == FS_BINARY) {
-        	       	 	        hex_encode(stdout, (unsigned char*) f->value.ptr, f->len);
-        	       	 } else if (f->type == FS_NULL) {
-        	       			// do nothing
-        	       	 } else {
-        	       	 	        log_fatal("csv", "received unknown output type");
-        	       	 }
-		}
+		int i=1; 
+        	field_t *f = &(fs->fields[i]);
+        	if (f->type == FS_STRING) {
+        		if (strchr((char*) f->value.ptr, ',')) {
+        	       		fprintf(stdout, "\"%s\"", (char*) f->value.ptr);
+        	       	} else {
+        	       	        fprintf(stdout, "%s", (char*) f->value.ptr);
+        	 	}
 		fprintf(stdout, "\n");
-	}	
+		}
+	}
+		
 	return EXIT_SUCCESS;
 }
 

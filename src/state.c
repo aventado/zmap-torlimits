@@ -13,9 +13,9 @@
 // global configuration and defaults
 struct state_conf zconf = {
 	.log_level = LOG_INFO,
-	.should_retransmit=0,
+	.should_retransmit=1,
 	.mode_retransmit = 0,
-	.source_port_retransmit = 41590,
+	.source_port_retransmit = 41591,
 	.source_port_first = 32768, // (these are the default
 	.source_port_last = 61000,	//	 ephemeral range on Linux)
 	.output_filename = NULL,

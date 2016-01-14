@@ -90,7 +90,7 @@ void recv_init()
 
 
         status = pcap_set_buffer_size(pc, PCAP_BUFFERSIZE);
-        if (status < 0) {
+        if (status != 0) {
                 log_fatal("recv", "could not set buffersize on device %s: %s",
                                                 zconf.iface, errbuf);
         }
